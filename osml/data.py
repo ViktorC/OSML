@@ -4,7 +4,7 @@ import pandas as pd
 
 class DataSet:
     """An abstract class representing a data set."""
-    def get_training_observations(self):
+    def get_training_observations(self) -> pd.DataFrame:
         """Returns a data frame of the training observations.
 
         Returns:
@@ -12,7 +12,7 @@ class DataSet:
         """
         pass
 
-    def get_test_observations(self):
+    def get_test_observations(self) -> pd.DataFrame:
         """Returns a data frame of the test observations.
 
         Returns:
@@ -20,7 +20,7 @@ class DataSet:
         """
         pass
 
-    def get_training_labels(self):
+    def get_training_labels(self) -> pd.Series:
         """Returns a series of the training observation labels.
 
         Returns:
@@ -28,7 +28,7 @@ class DataSet:
         """
         pass
 
-    def get_test_labels(self):
+    def get_test_labels(self) -> pd.Series:
         """Returns a series of the test observation labels.
 
         Returns:

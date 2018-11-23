@@ -1,14 +1,16 @@
 import math
 import numpy as np
+import operator
 import pandas as pd
 
 
 class Model:
     """An abstract class representing a statistical model or machine learning algorithm."""
-    def __init__(self):
+    def __init__(self, epsilon=1e-8):
         self._observation_types = None
         self._label_type = None
         self._label_name = ''
+        self._epsilon = epsilon
 
     def _validate_observations(self, observations_df):
         if len(observations_df.dtypes) == 0 or len(observations_df.index) == 0\
@@ -27,16 +29,16 @@ class Model:
         if len(observations_df.index) != len(labels_sr.index):
             raise ValueError
 
-    def _fit(self, observations_df, labels_sr):
+    def _fit(self, observations_df: pd.DataFrame, labels_sr: pd.Series) -> None:
         pass
 
-    def _predict(self, observations_df):
+    def _predict(self, observations_df: pd.DataFrame) -> pd.Series:
         pass
 
-    def _test(self, observations_df, labels_sr):
-        pass
+    def _test(self, observations_df: pd.DataFrame, labels_sr: pd.Series) -> float:
+        return (1 + self._epsilon) / (self.evaluate(self.predict(observations_df), labels_sr) + self._epsilon) - 1
 
-    def _evaluate(self, predictions_sr, labels_sr):
+    def _evaluate(self, predictions_sr: pd.Series, labels_sr: pd.Series) -> float:
         pass
 
     def fit(self, observations_df, labels_sr):
@@ -134,8 +136,8 @@ class RegressionModel(Model):
             raise ValueError
 
     def _evaluate(self, predictions_sr, labels_sr):
-        # Root mean squared error.
-        return np.sqrt(np.square(predictions_sr.values - labels_sr.values).mean())
+        # The reciprocal of the root mean squared error plus one.
+        return 1 / (np.sqrt(np.square(predictions_sr.values - labels_sr.values).mean()) + 1)
 
 
 class ClassificationModel(Model):
@@ -150,7 +152,7 @@ class ClassificationModel(Model):
 
     def _evaluate(self, predictions_sr, labels_sr):
         # The number of correct predictions per the total number of predictions.
-        return len([p for i, p in enumerate(predictions_sr) if p == labels_sr[i]]) / len(predictions_sr)
+        return len([p for i, p in predictions_sr.iteritems() if p == labels_sr[i]]) / predictions_sr.count()
 
 
 class BinaryClassificationModel(ClassificationModel):
@@ -229,9 +231,8 @@ class LogisticRegression(BinaryClassificationModel):
 class NaiveBayes(ClassificationModel):
     """A naive Bayes multinomial classification model."""
     def __init__(self, laplace_smoothing=1.):
-        super(Model, self).__init__()
+        super(NaiveBayes, self).__init__()
         self.laplace_smoothing = laplace_smoothing
-        self.epsilon = 1e-8
         self.classes = None
         self.class_priors = None
         self.feature_statistics = None
@@ -255,26 +256,23 @@ class NaiveBayes(ClassificationModel):
 
     def _predict(self, observations_df):
         predictions = []
-        for i, row in observations_df.iterrows():
+        for row in observations_df.itertuples():
             highest_class_probability = -1
             prediction = None
             probability_of_evidence = 1
             for j, feature_stats in enumerate(self.feature_statistics):
-                probability_of_evidence *= feature_stats.get_probability(row[j])
+                probability_of_evidence *= feature_stats.get_probability(row[j + 1])
             for label_class in self.classes:
                 class_prior = self.class_priors[label_class]
                 likelihood = 1
                 for j, feature_stats in enumerate(self.feature_statistics):
-                    likelihood *= feature_stats.get_likelihood(row[j], label_class)
+                    likelihood *= feature_stats.get_likelihood(row[j + 1], label_class)
                 class_probability = likelihood * class_prior / probability_of_evidence
                 if class_probability > highest_class_probability:
                     highest_class_probability = class_probability
                     prediction = label_class
             predictions.append(prediction)
         return predictions
-
-    def _test(self, observations_df, labels_sr):
-        return (1 + self.epsilon) / (self.evaluate(self.predict(observations_df), labels_sr) + self.epsilon) - 1
 
     class FeatureStatistics:
         """An abstract base class for feature statistics."""
@@ -350,3 +348,91 @@ class NaiveBayes(ClassificationModel):
             likelihood_tuple = self.likelihoods[label_value]
             return self.calculate_probability(value, likelihood_tuple[0], likelihood_tuple[1], self.laplace_smoothing)
 
+
+class KNearestNeighbors(Model):
+    """An abstract weighted k-nearest neighbors model."""
+    def __init__(self, k, standardize):
+        super(KNearestNeighbors, self).__init__()
+        if k <= 0:
+            raise ValueError
+        self.k = k
+        self.standardize = standardize
+        self.observations_mean = None
+        self.observations_sd = None
+        self.preprocessed_observations = None
+        self.labels = None
+
+    def _fit(self, observations_df, labels_sr):
+        if len(observations_df.index) < self.k + 1:
+            raise ValueError
+        if self.standardize:
+            self.observations_mean = observations_df.values.mean(axis=0)
+            self.observations_sd = np.sqrt(np.square(observations_df.values - self.observations_mean).mean(axis=0))
+            self.preprocessed_observations = (observations_df.values - self.observations_mean) / self.observations_sd
+        else:
+            self.preprocessed_observations = observations_df.values
+        self.labels = labels_sr.values
+
+    def _distances(self, observation):
+        # Simple Euclidian distance.
+        return np.sqrt(np.square(self.preprocessed_observations - observation).sum(axis=1))
+
+    def _weight(self, distance):
+        # Gaussian kernel function.
+        return math.exp(-(distance ** 2) / 2) / math.sqrt(2 * math.pi)
+
+    def _select_weighted_nearest_neighbors(self, observation):
+        if self.standardize:
+            preprocessed_observation = (observation - self.observations_mean) / self.observations_sd
+        else:
+            preprocessed_observation = observation
+        distances = self._distances(preprocessed_observation)
+        k_plus_1_nn_indices = np.argpartition(distances, self.k + 1)
+        k_plus_1_nn = pd.Series(distances[k_plus_1_nn_indices], index=k_plus_1_nn_indices)
+        k_plus_1_nn = k_plus_1_nn.sort_values()
+        weighted_nearest_neighbor_labels = {}
+        distance_to_normalize_by = None
+        for i, value in k_plus_1_nn.iteritems():
+            if distance_to_normalize_by is None:
+                distance_to_normalize_by = value
+                continue
+            weight = self._weight(value / (distance_to_normalize_by + self._epsilon))
+            label = self.labels[i]
+            if label in weighted_nearest_neighbor_labels:
+                weighted_nearest_neighbor_labels[label] += weight
+            else:
+                weighted_nearest_neighbor_labels[label] = weight
+        return weighted_nearest_neighbor_labels
+
+
+class KNearestNeighborsRegression(KNearestNeighbors, RegressionModel):
+    """A weighted k-nearest neighbors regression model."""
+    def __init__(self, k=7, standardize=True):
+        KNearestNeighbors.__init__(self, k, standardize)
+        RegressionModel.__init__(self)
+
+    def _predict(self, observations_df):
+        predictions = []
+        for i, row in observations_df.iterrows():
+            weighted_labels_sum = 0
+            weight_sum = 0
+            for key, value in self._select_weighted_nearest_neighbors(row.values).items():
+                weighted_labels_sum += key * value
+                weight_sum += value
+            predictions.append(weighted_labels_sum / weight_sum)
+        return predictions
+
+
+class KNearestNeighborsClassification(KNearestNeighbors, ClassificationModel):
+    """A weighted k-nearest neighbors classification model."""
+    def __init__(self, k=7, standardize=True):
+        KNearestNeighbors.__init__(self, k, standardize)
+        ClassificationModel.__init__(self)
+
+    def _predict(self, observations_df):
+        predictions = []
+        for i, row in observations_df.iterrows():
+            nearest_neighbors = self._select_weighted_nearest_neighbors(row.values)
+            sorted_nearest_neighbors = sorted(nearest_neighbors.items(), key=operator.itemgetter(1), reverse=True)
+            predictions.append(sorted_nearest_neighbors[0][0])
+        return predictions
