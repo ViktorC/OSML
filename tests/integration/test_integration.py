@@ -16,7 +16,7 @@ import sklearn.neighbors as sknn
     (osmld.MushroomDataSet('data/mushroom/mushroom.csv'), osmlm.NaiveBayes(), .2),
     (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.KNearestNeighborsRegression(), 40.),
     (osmld.ExamDataSet('data/exam/ex4x.dat', 'data/exam/ex4y.dat'),
-        osmlm.KNearestNeighborsClassification(standardize=False), .3),
+        osmlm.KNearestNeighborsClassification(standardize=False), .6),
     (osmld.IrisDataSet('data/iris/iris.csv'), osmlm.KNearestNeighborsClassification(), .2)
 ])
 def test_model_loss(data_set, model, max_test_loss):
