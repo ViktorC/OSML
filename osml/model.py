@@ -166,6 +166,40 @@ class BinaryClassificationModel(ClassificationModel):
             raise ValueError
 
 
+class MultiBinaryClassification(ClassificationModel):
+    """A wrapper class that uses multiple binary classifiers for multi-class classification."""
+    def __init__(self, binary_classification, *args):
+        super(MultiBinaryClassification, self).__init__()
+        self.binary_classification = binary_classification
+        self.args = args
+        self.classes = None
+        self.binary_classifiers = None
+
+    def _fit(self, observations_df, labels_sr):
+        self.classes = labels_sr.unique()
+        self.binary_classifiers = []
+        for klass in self.classes:
+            classifier = self.binary_classification(*self.args)
+            binary_labels_sr = labels_sr.apply(lambda label: 1 if label == klass else 0)
+            classifier.fit(observations_df, binary_labels_sr)
+            self.binary_classifiers.append(classifier)
+
+    def _predict(self, observations_df):
+        predictions = []
+        label_sr = pd.Series([1])
+        for i, row in observations_df.iterrows():
+            most_confident_prediction = None
+            lowest_loss = None
+            for j, classifier in enumerate(self.binary_classifiers):
+                loss = classifier.test(pd.DataFrame(index=[0], columns=row.index,
+                                                    data=row.values.reshape(1, len(row.index))), label_sr)
+                if lowest_loss is None or loss < lowest_loss:
+                    lowest_loss = loss
+                    most_confident_prediction = self.classes[j]
+            predictions.append(most_confident_prediction)
+        return predictions
+
+
 def _bias_trick(observations_df):
     observations = observations_df.values
     obs_ext = np.ones((observations.shape[0], observations.shape[1] + 1))
@@ -217,7 +251,12 @@ class LogisticRegression(BinaryClassificationModel):
             first_derivative = observations_trans @ (predictions - labels)
             # If the number of parameters is N, the Hessian will take the shape of an NxN matrix.
             second_derivative = (observations_trans * (predictions * (1 - predictions))) @ observations
-            self.beta = self.beta - np.linalg.inv(second_derivative) @ first_derivative
+            try:
+                self.beta = self.beta - np.linalg.inv(second_derivative) @ first_derivative
+            except np.linalg.LinAlgError:
+                # The values of the Hessian are so small that its determinant is practically 0, therefore, it is not
+                # invertible. No further second order optimization is possible.
+                break
 
     def _predict(self, observations_df):
         return np.rint(self._logistic_function(_bias_trick(observations_df)))
@@ -225,7 +264,9 @@ class LogisticRegression(BinaryClassificationModel):
     def _test(self, observations_df, labels_sr):
         labels = labels_sr.values
         predictions = self._logistic_function(_bias_trick(observations_df))
-        return (np.log(predictions) * labels + np.log(1 - predictions) * (1 - labels)).mean()
+        predictions[predictions == 0] = self._epsilon
+        predictions[predictions == 1] = 1 - self._epsilon
+        return -((np.log(predictions) * labels + np.log(1 - predictions) * (1 - labels)).mean())
 
 
 class NaiveBayes(ClassificationModel):
@@ -436,3 +477,12 @@ class KNearestNeighborsClassification(KNearestNeighbors, ClassificationModel):
             sorted_nearest_neighbors = sorted(nearest_neighbors.items(), key=operator.itemgetter(1), reverse=True)
             predictions.append(sorted_nearest_neighbors[0][0])
         return predictions
+
+
+class DecisionTree(Model):
+    """An abstract decision tree base class."""
+    def __init__(self):
+        super(DecisionTree, self).__init__()
+
+    def _fit(self, observations_df, labels_sr):
+        pass
