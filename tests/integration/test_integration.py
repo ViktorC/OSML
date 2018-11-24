@@ -9,8 +9,8 @@ import sklearn.neighbors as sknn
 
 @pytest.mark.parametrize('data_set,model,max_test_loss', [
     (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.LinearRegression(), 40.),
-    (osmld.ExamDataSet('data/exam/ex4x.dat', 'data/exam/ex4y.dat'), osmlm.LogisticRegression(), .6),
-    (osmld.TitanicDataSet('data/titanic/titanic.csv'), osmlm.LogisticRegression(), .6),
+    (osmld.ExamDataSet('data/exam/ex4x.dat', 'data/exam/ex4y.dat'), osmlm.LogisticRegression(), .7),
+    (osmld.TitanicDataSet('data/titanic/titanic.csv'), osmlm.LogisticRegression(), .7),
     (osmld.IrisDataSet('data/iris/iris.csv'), osmlm.MultiBinaryClassification(osmlm.LogisticRegression), .25),
     (osmld.IrisDataSet('data/iris/iris.csv'), osmlm.NaiveBayes(), .2),
     (osmld.TitanicDataSet('data/titanic/titanic.csv'), osmlm.NaiveBayes(), .4),
