@@ -13,13 +13,13 @@ class Model:
         self._epsilon = epsilon
 
     def _validate_observations(self, observations_df):
-        if len(observations_df.dtypes) == 0 or len(observations_df.index) == 0\
-                or any(not np.issubdtype(dtype, np.number) for dtype in observations_df.dtypes)\
+        if len(observations_df.dtypes) == 0 or len(observations_df.index) == 0 \
+                or any(not np.issubdtype(dtype, np.number) for dtype in observations_df.dtypes) \
                 or not observations_df.dtypes.equals(self._observation_types):
             raise ValueError
 
     def _validate_labels(self, labels_sr):
-        if len(labels_sr.index) == 0 or not np.issubdtype(labels_sr.dtype, np.number)\
+        if len(labels_sr.index) == 0 or not np.issubdtype(labels_sr.dtype, np.number) \
                 or labels_sr.dtype != self._label_type:
             raise ValueError
 
@@ -481,8 +481,172 @@ class KNearestNeighborsClassification(KNearestNeighbors, ClassificationModel):
 
 class DecisionTree(Model):
     """An abstract decision tree base class."""
-    def __init__(self):
+    def __init__(self, max_depth, min_observations, min_impurity, min_impurity_reduction):
         super(DecisionTree, self).__init__()
+        self.max_depth = max_depth
+        self.min_observations = max(2, min_observations) if min_observations is not None else 2
+        self.min_impurity = max(0, min_impurity) if min_impurity is not None else 0
+        self.min_impurity_reduction = min_impurity_reduction if min_impurity_reduction is not None else float('-inf')
+        self.root = None
+
+    def _setup(self, labels_sr: pd.Series) -> None:
+        pass
+
+    def _compute_impurity(self, labels_sr: pd.Series) -> float:
+        pass
+
+    def _compute_leaf_node_value(self, labels_sr: pd.Series) -> float:
+        pass
+
+    def _compute_aggregate_impurity(self, list_of_labels_sr):
+        total_labels = 0
+        for labels_sr in list_of_labels_sr:
+            total_labels += labels_sr.count()
+        aggregate_impurity = 0
+        for labels_sr in list_of_labels_sr:
+            count = labels_sr.count()
+            if count > 0:
+                impurity = self._compute_impurity(labels_sr)
+                if math.isnan(impurity):
+                    impurity = 0
+                aggregate_impurity += count * impurity / total_labels
+        return aggregate_impurity
+
+    def _build_tree(self, observations_df, labels_sr, features, depth):
+        # Instantiate the node and calculate its value.
+        node = self.DecisionTreeNode()
+        node.value = self._compute_leaf_node_value(labels_sr)
+        # Check termination conditions.
+        if len(features) == 0 or labels_sr.count() <= self.min_observations:
+            return node
+        if self.max_depth is not None and depth >= self.max_depth:
+            return node
+        current_impurity = self._compute_impurity(labels_sr)
+        if current_impurity <= self.min_impurity:
+            return node
+        # Select the best feature to split by.
+        best_feature = None
+        best_indices_by_feature_value = None
+        best_impurity = None
+        for feature in features:
+            column_sr = observations_df[feature]
+            indices_by_feature_value = {}
+            uniques = column_sr.unique()
+            # If all the observations have the same value for the selected feature, we cannot split by it.
+            if len(uniques) == 1:
+                continue
+            impurity = None
+            if _is_categorical(column_sr.dtype):
+                list_of_labels_sr = []
+                for value in uniques:
+                    indices = column_sr[column_sr == value].index
+                    indices_by_feature_value[value] = indices
+                    list_of_labels_sr.append(labels_sr.reindex(indices))
+                impurity = self._compute_aggregate_impurity(list_of_labels_sr)
+            elif _is_continuous(column_sr.dtype):
+                uniques.sort()
+                for i, value in enumerate(uniques):
+                    if i < len(uniques) - 1:
+                        split_point = (value + uniques[i + 1]) / 2
+                        ge_split_indices = column_sr[column_sr >= split_point].index
+                        l_split_indices = column_sr[column_sr < split_point].index
+                        list_of_labels_sr = [labels_sr.reindex(ge_split_indices), labels_sr.reindex(l_split_indices)]
+                        split_point_impurity = self._compute_aggregate_impurity(list_of_labels_sr)
+                        if impurity is None or split_point_impurity < impurity:
+                            indices_by_feature_value = {split_point: ge_split_indices, None: l_split_indices}
+                            impurity = split_point_impurity
+            else:
+                raise ValueError
+            if best_impurity is None or impurity < best_impurity:
+                best_feature = feature
+                best_indices_by_feature_value = indices_by_feature_value
+                best_impurity = impurity
+        # Check split metric reduction termination condition (and whether any split points could be established at all).
+        if best_impurity is None or current_impurity - best_impurity <= self.min_impurity_reduction:
+            return node
+        # Split the observations and the labels and recurse to build the child nodes and their sub-trees.
+        features.remove(best_feature)
+        node.feature = best_feature
+        node.children_by_feature_value = {}
+        for key, value in best_indices_by_feature_value.items():
+            if len(value) == 0:
+                child = self.DecisionTreeNode()
+                child.value = node.value
+            else:
+                child = self._build_tree(observations_df.reindex(value), labels_sr.reindex(value), features, depth + 1)
+            node.children_by_feature_value[key] = child
+        features.append(best_feature)
+        return node
 
     def _fit(self, observations_df, labels_sr):
-        pass
+        self._setup(labels_sr)
+        self.root = self._build_tree(observations_df, labels_sr, observations_df.columns.tolist(), 0)
+
+    def _predict(self, observations_df):
+        predictions = []
+        for i, row in observations_df.iterrows():
+            node = self.root
+            terminate_early = False
+            while not terminate_early and node.feature is not None:
+                feature_value = row[node.feature]
+                feature_type = observations_df[node.feature].dtype
+                if _is_categorical(feature_type):
+                    if feature_value in node.children_by_feature_value:
+                        node = node.children_by_feature_value[feature_value]
+                    else:
+                        terminate_early = True
+                elif _is_continuous(feature_type):
+                    split_point = [key for key in node.children_by_feature_value.keys() if key is not None][0]
+                    if feature_value >= split_point:
+                        node = node.children_by_feature_value[split_point]
+                    else:
+                        node = node.children_by_feature_value[None]
+                else:
+                    raise ValueError
+            predictions.append(node.value)
+        return predictions
+
+    class DecisionTreeNode:
+        """A class representing a decision tree node."""
+        def __init__(self):
+            self.value = None
+            self.feature = None
+            self.children_by_feature_value = None
+
+
+class DecisionTreeClassification(DecisionTree, ClassificationModel):
+    """A decision tree classifier model."""
+    def __init__(self, max_depth=None, min_observations=2, min_entropy=1e-5, min_info_gain=0):
+        DecisionTree.__init__(self, max_depth, min_observations, min_entropy, min_info_gain)
+        ClassificationModel.__init__(self)
+        self.classes = None
+
+    def _setup(self, labels_sr):
+        self.classes = labels_sr.unique()
+
+    def _compute_impurity(self, labels_sr):
+        # Entropy.
+        entropy = 0
+        for klass in self.classes:
+            count = labels_sr[labels_sr == klass].count()
+            if count > 0:
+                proportion = float(count) / labels_sr.count()
+                entropy -= proportion * math.log(proportion, 2)
+        return entropy
+
+    def _compute_leaf_node_value(self, labels_sr):
+        return labels_sr.mode()[0]
+
+
+class DecisionTreeRegression(DecisionTree, RegressionModel):
+    """A decision tree classifier model."""
+    def __init__(self, max_depth=None, min_observations=2, min_variance=1e-2, min_variance_reduction=0):
+        DecisionTree.__init__(self, max_depth, min_observations, min_variance, min_variance_reduction)
+        RegressionModel.__init__(self)
+
+    def _compute_impurity(self, labels_sr):
+        # Variance.
+        return labels_sr.var()
+
+    def _compute_leaf_node_value(self, labels_sr):
+        return labels_sr.mean()

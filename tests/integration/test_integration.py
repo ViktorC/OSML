@@ -5,6 +5,7 @@ import pandas as pd
 import sklearn.linear_model as sklm
 import sklearn.naive_bayes as sknb
 import sklearn.neighbors as sknn
+import sklearn.tree as skt
 
 
 @pytest.mark.parametrize('data_set,model,max_test_loss', [
@@ -17,11 +18,16 @@ import sklearn.neighbors as sknn
     (osmld.MushroomDataSet('data/mushroom/mushroom.csv'), osmlm.NaiveBayes(), .2),
     (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.KNearestNeighborsRegression(), 40.),
     (osmld.ExamDataSet('data/exam/ex4x.dat', 'data/exam/ex4y.dat'), osmlm.KNearestNeighborsClassification(), .6),
-    (osmld.IrisDataSet('data/iris/iris.csv'), osmlm.KNearestNeighborsClassification(), .2)
+    (osmld.IrisDataSet('data/iris/iris.csv'), osmlm.KNearestNeighborsClassification(), .2),
+    (osmld.MushroomDataSet('data/mushroom/mushroom.csv'), osmlm.DecisionTreeClassification(), .02),
+    (osmld.IrisDataSet('data/iris/iris.csv'), osmlm.DecisionTreeClassification(), .3),
+    (osmld.TitanicDataSet('data/titanic/titanic.csv'), osmlm.DecisionTreeClassification(), .35),
+    (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.DecisionTreeRegression(), 7.)
 ])
 def test_model_loss(data_set, model, max_test_loss):
     model.fit(data_set.get_training_observations(), data_set.get_training_labels())
-    assert model.test(data_set.get_test_observations(), data_set.get_test_labels()) <= max_test_loss
+    test_loss = model.test(data_set.get_test_observations(), data_set.get_test_labels())
+    assert test_loss <= max_test_loss
 
 
 @pytest.mark.parametrize('data_set,model,sk_model,min_accuracy_compared_to_sk', [
@@ -37,7 +43,13 @@ def test_model_loss(data_set, model, max_test_loss):
     (osmld.ExamDataSet('data/exam/ex4x.dat', 'data/exam/ex4y.dat'),
         osmlm.KNearestNeighborsClassification(), sknn.KNeighborsClassifier(n_neighbors=7, weights='distance'), .8),
     (osmld.IrisDataSet('data/iris/iris.csv'), osmlm.KNearestNeighborsClassification(),
-        sknn.KNeighborsClassifier(n_neighbors=7, weights='distance'), .9)
+        sknn.KNeighborsClassifier(n_neighbors=7, weights='distance'), .9),
+    (osmld.MushroomDataSet('data/mushroom/mushroom.csv'), osmlm.DecisionTreeClassification(),
+        skt.DecisionTreeClassifier(), .99),
+    (osmld.TitanicDataSet('data/titanic/titanic.csv'), osmlm.DecisionTreeClassification(),
+        skt.DecisionTreeClassifier(), .85),
+    (osmld.IrisDataSet('data/iris/iris.csv'), osmlm.DecisionTreeClassification(), skt.DecisionTreeClassifier(), .85),
+    (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.DecisionTreeRegression(), skt.DecisionTreeRegressor(), .8)
 ])
 def test_model_accuracy_compared_to_sklearn(data_set, model, sk_model, min_accuracy_compared_to_sk):
     model.fit(data_set.get_training_observations(), data_set.get_training_labels())
