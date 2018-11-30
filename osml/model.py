@@ -1,7 +1,11 @@
+import copy
 import math
+import multiprocessing as mp
 import numpy as np
 import operator
 import pandas as pd
+import random
+import typing
 
 
 class Model:
@@ -168,21 +172,20 @@ class BinaryClassificationModel(ClassificationModel):
 
 class MultiBinaryClassification(ClassificationModel):
     """A wrapper class that uses multiple binary classifiers for multi-class classification."""
-    def __init__(self, binary_classification, *args):
+    def __init__(self, base_binary_classifier):
         super(MultiBinaryClassification, self).__init__()
-        self.binary_classification = binary_classification
-        self.args = args
-        self.classes = None
-        self.binary_classifiers = None
+        self.base_binary_classifier = base_binary_classifier
+        self._classes = None
+        self._binary_classifiers = None
 
     def _fit(self, observations_df, labels_sr):
-        self.classes = labels_sr.unique()
-        self.binary_classifiers = []
-        for klass in self.classes:
-            classifier = self.binary_classification(*self.args)
+        self._classes = labels_sr.unique()
+        self._binary_classifiers = []
+        for klass in self._classes:
+            classifier = copy.deepcopy(self.base_binary_classifier)
             binary_labels_sr = labels_sr.apply(lambda label: 1 if label == klass else 0)
             classifier.fit(observations_df, binary_labels_sr)
-            self.binary_classifiers.append(classifier)
+            self._binary_classifiers.append(classifier)
 
     def _predict(self, observations_df):
         predictions = []
@@ -190,12 +193,12 @@ class MultiBinaryClassification(ClassificationModel):
         for i, row in observations_df.iterrows():
             most_confident_prediction = None
             lowest_loss = None
-            for j, classifier in enumerate(self.binary_classifiers):
+            for j, classifier in enumerate(self._binary_classifiers):
                 loss = classifier.test(pd.DataFrame(index=[0], columns=row.index,
                                                     data=row.values.reshape(1, len(row.index))), label_sr)
                 if lowest_loss is None or loss < lowest_loss:
                     lowest_loss = loss
-                    most_confident_prediction = self.classes[j]
+                    most_confident_prediction = self._classes[j]
             predictions.append(most_confident_prediction)
         return predictions
 
@@ -232,40 +235,37 @@ class LinearRegression(RegressionModel):
 
 class LogisticRegression(BinaryClassificationModel):
     """A logistic regression model using the Newton-Raphson method."""
-    def __init__(self, iterations=100):
+    def __init__(self, iterations=100, min_gradient=1e-7):
         super(LogisticRegression, self).__init__()
         self.iterations = iterations
-        self.beta = None
+        self.min_gradient = min_gradient
+        self._beta = None
 
     def _logistic_function(self, observations):
-        return np.reciprocal(np.exp(-observations @ self.beta) + 1)
+        return np.reciprocal(np.exp(-observations @ self._beta) + 1)
 
     def _fit(self, observations_df, labels_sr):
         # Use Newton's method to numerically approximate the root of the log likelihood function's derivative.
         observations = _bias_trick(observations_df)
         observations_trans = observations.transpose()
         labels = labels_sr.values
-        self.beta = np.zeros(observations.shape[1], )
+        self._beta = np.zeros(observations.shape[1], )
         for i in range(self.iterations):
             predictions = self._logistic_function(observations)
             first_derivative = observations_trans @ (predictions - labels)
-            # If the number of parameters is N, the Hessian will take the shape of an NxN matrix.
-            second_derivative = (observations_trans * (predictions * (1 - predictions))) @ observations
-            try:
-                self.beta = self.beta - np.linalg.inv(second_derivative) @ first_derivative
-            except np.linalg.LinAlgError:
-                # The values of the Hessian are so small that its determinant is practically 0, therefore, it is not
-                # invertible. No further second order optimization is possible.
+            if np.all(first_derivative <= self.min_gradient):
                 break
+            # If the number of parameters is N, the Hessian will take the shape of an N by N matrix.
+            second_derivative = (observations_trans * (predictions * (1 - predictions))) @ observations
+            self._beta = self._beta - np.linalg.inv(second_derivative) @ first_derivative
 
     def _predict(self, observations_df):
         return np.rint(self._logistic_function(_bias_trick(observations_df)))
 
     def _test(self, observations_df, labels_sr):
         labels = labels_sr.values
-        predictions = self._logistic_function(_bias_trick(observations_df))
-        predictions[predictions == 0] = self._epsilon
-        predictions[predictions == 1] = 1 - self._epsilon
+        observations = _bias_trick(observations_df)
+        predictions = np.minimum(self._logistic_function(observations) + self._epsilon, 1 - self._epsilon)
         return -((np.log(predictions) * labels + np.log(1 - predictions) * (1 - labels)).mean())
 
 
@@ -274,24 +274,24 @@ class NaiveBayes(ClassificationModel):
     def __init__(self, laplace_smoothing=1.):
         super(NaiveBayes, self).__init__()
         self.laplace_smoothing = laplace_smoothing
-        self.classes = None
-        self.class_priors = None
-        self.feature_statistics = None
+        self._classes = None
+        self._class_priors = None
+        self._feature_statistics = None
 
     def _fit(self, observations_df, labels_sr):
-        self.classes = labels_sr.unique()
-        self.class_priors = labels_sr.value_counts().astype(np.float_) / labels_sr.count()
+        self._classes = labels_sr.unique()
+        self._class_priors = labels_sr.value_counts().astype(np.float_) / labels_sr.count()
         indices_by_label = {}
-        for label_value in self.classes:
+        for label_value in self._classes:
             indices_by_label[label_value] = [i for i, v in enumerate(labels_sr) if v == label_value]
-        self.feature_statistics = []
+        self._feature_statistics = []
         for column in observations_df.columns:
             feature_values_sr = observations_df[column]
             if _is_categorical(feature_values_sr.dtype):
-                self.feature_statistics.append(self.CategoricalFeatureStatistics(feature_values_sr, indices_by_label,
-                                                                                 self.laplace_smoothing))
+                self._feature_statistics.append(self.CategoricalFeatureStatistics(feature_values_sr, indices_by_label,
+                                                                                  self.laplace_smoothing))
             elif _is_continuous(feature_values_sr.dtype):
-                self.feature_statistics.append(self.ContinuousFeatureStatistics(feature_values_sr, indices_by_label))
+                self._feature_statistics.append(self.ContinuousFeatureStatistics(feature_values_sr, indices_by_label))
             else:
                 raise ValueError
 
@@ -301,12 +301,12 @@ class NaiveBayes(ClassificationModel):
             highest_class_probability = -1
             prediction = None
             probability_of_evidence = 1
-            for j, feature_stats in enumerate(self.feature_statistics):
+            for j, feature_stats in enumerate(self._feature_statistics):
                 probability_of_evidence *= feature_stats.get_probability(row[j + 1])
-            for label_class in self.classes:
-                class_prior = self.class_priors[label_class]
+            for label_class in self._classes:
+                class_prior = self._class_priors[label_class]
                 likelihood = 1
-                for j, feature_stats in enumerate(self.feature_statistics):
+                for j, feature_stats in enumerate(self._feature_statistics):
                     likelihood *= feature_stats.get_likelihood(row[j + 1], label_class)
                 class_probability = likelihood * class_prior / probability_of_evidence
                 if class_probability > highest_class_probability:
@@ -398,25 +398,25 @@ class KNearestNeighbors(Model):
             raise ValueError
         self.k = k
         self.standardize = standardize
-        self.observations_mean = None
-        self.observations_sd = None
-        self.preprocessed_observations = None
-        self.labels = None
+        self._observations_mean = None
+        self._observations_sd = None
+        self._preprocessed_observations = None
+        self._labels = None
 
     def _fit(self, observations_df, labels_sr):
         if len(observations_df.index) < self.k + 1:
             raise ValueError
         if self.standardize:
-            self.observations_mean = observations_df.values.mean(axis=0)
-            self.observations_sd = np.sqrt(np.square(observations_df.values - self.observations_mean).mean(axis=0))
-            self.preprocessed_observations = (observations_df.values - self.observations_mean) / self.observations_sd
+            self._observations_mean = observations_df.values.mean(axis=0)
+            self._observations_sd = np.sqrt(np.square(observations_df.values - self._observations_mean).mean(axis=0))
+            self._preprocessed_observations = (observations_df.values - self._observations_mean) / self._observations_sd
         else:
-            self.preprocessed_observations = observations_df.values
-        self.labels = labels_sr.values
+            self._preprocessed_observations = observations_df.values
+        self._labels = labels_sr.values
 
     def _distances(self, observation):
         # Simple Euclidian distance.
-        return np.sqrt(np.square(self.preprocessed_observations - observation).sum(axis=1))
+        return np.sqrt(np.square(self._preprocessed_observations - observation).sum(axis=1))
 
     def _weight(self, distance):
         # Gaussian kernel function.
@@ -424,7 +424,7 @@ class KNearestNeighbors(Model):
 
     def _select_weighted_nearest_neighbors(self, observation):
         if self.standardize:
-            preprocessed_observation = (observation - self.observations_mean) / self.observations_sd
+            preprocessed_observation = (observation - self._observations_mean) / self._observations_sd
         else:
             preprocessed_observation = observation
         distances = self._distances(preprocessed_observation)
@@ -438,7 +438,7 @@ class KNearestNeighbors(Model):
                 distance_to_normalize_by = value
                 continue
             weight = self._weight(value / (distance_to_normalize_by + self._epsilon))
-            label = self.labels[i]
+            label = self._labels[i]
             if label in weighted_nearest_neighbor_labels:
                 weighted_nearest_neighbor_labels[label] += weight
             else:
@@ -481,13 +481,17 @@ class KNearestNeighborsClassification(KNearestNeighbors, ClassificationModel):
 
 class DecisionTree(Model):
     """An abstract decision tree base class."""
-    def __init__(self, max_depth, min_observations, min_impurity, min_impurity_reduction):
+    def __init__(self, max_depth, min_observations, min_impurity, min_impurity_reduction, random_feature_selection,
+                 feature_sample_size_function):
         super(DecisionTree, self).__init__()
         self.max_depth = max_depth
         self.min_observations = max(2, min_observations) if min_observations is not None else 2
         self.min_impurity = max(0, min_impurity) if min_impurity is not None else 0
         self.min_impurity_reduction = min_impurity_reduction if min_impurity_reduction is not None else float('-inf')
-        self.root = None
+        self.random_feature_selection = random_feature_selection
+        self.feature_sample_size_function = feature_sample_size_function if feature_sample_size_function is not None \
+            else lambda n: n
+        self._root = None
 
     def _setup(self, labels_sr: pd.Series) -> None:
         pass
@@ -528,7 +532,14 @@ class DecisionTree(Model):
         best_feature = None
         best_indices_by_feature_value = None
         best_impurity = None
-        for feature in features:
+        if self.random_feature_selection:
+            n_features = len(features)
+            features_to_consider = random.sample(range(n_features), int(self.feature_sample_size_function(n_features)))
+        else:
+            features_to_consider = None
+        for i, feature in enumerate(features):
+            if self.random_feature_selection and i not in features_to_consider:
+                continue
             column_sr = observations_df[feature]
             indices_by_feature_value = {}
             uniques = column_sr.unique()
@@ -545,9 +556,9 @@ class DecisionTree(Model):
                 impurity = self._compute_aggregate_impurity(list_of_labels_sr)
             elif _is_continuous(column_sr.dtype):
                 uniques.sort()
-                for i, value in enumerate(uniques):
-                    if i < len(uniques) - 1:
-                        split_point = (value + uniques[i + 1]) / 2
+                for j, value in enumerate(uniques):
+                    if j < len(uniques) - 1:
+                        split_point = (value + uniques[j + 1]) / 2
                         ge_split_indices = column_sr[column_sr >= split_point].index
                         l_split_indices = column_sr[column_sr < split_point].index
                         list_of_labels_sr = [labels_sr.reindex(ge_split_indices), labels_sr.reindex(l_split_indices)]
@@ -580,12 +591,12 @@ class DecisionTree(Model):
 
     def _fit(self, observations_df, labels_sr):
         self._setup(labels_sr)
-        self.root = self._build_tree(observations_df, labels_sr, observations_df.columns.tolist(), 0)
+        self._root = self._build_tree(observations_df, labels_sr, observations_df.columns.tolist(), 0)
 
     def _predict(self, observations_df):
         predictions = []
         for i, row in observations_df.iterrows():
-            node = self.root
+            node = self._root
             terminate_early = False
             while not terminate_early and node.feature is not None:
                 feature_value = row[node.feature]
@@ -616,18 +627,20 @@ class DecisionTree(Model):
 
 class DecisionTreeClassification(DecisionTree, ClassificationModel):
     """A decision tree classifier model."""
-    def __init__(self, max_depth=None, min_observations=2, min_entropy=1e-5, min_info_gain=0):
-        DecisionTree.__init__(self, max_depth, min_observations, min_entropy, min_info_gain)
+    def __init__(self, max_depth=None, min_observations=2, min_entropy=1e-5, min_info_gain=0,
+                 random_feature_selection=False, feature_sample_size_function=math.sqrt):
+        DecisionTree.__init__(self, max_depth, min_observations, min_entropy, min_info_gain, random_feature_selection,
+                              feature_sample_size_function)
         ClassificationModel.__init__(self)
-        self.classes = None
+        self._classes = None
 
     def _setup(self, labels_sr):
-        self.classes = labels_sr.unique()
+        self._classes = labels_sr.unique()
 
     def _compute_impurity(self, labels_sr):
         # Entropy.
         entropy = 0
-        for klass in self.classes:
+        for klass in self._classes:
             count = labels_sr[labels_sr == klass].count()
             if count > 0:
                 proportion = float(count) / labels_sr.count()
@@ -640,8 +653,10 @@ class DecisionTreeClassification(DecisionTree, ClassificationModel):
 
 class DecisionTreeRegression(DecisionTree, RegressionModel):
     """A decision tree classifier model."""
-    def __init__(self, max_depth=None, min_observations=2, min_variance=1e-2, min_variance_reduction=0):
-        DecisionTree.__init__(self, max_depth, min_observations, min_variance, min_variance_reduction)
+    def __init__(self, max_depth=None, min_observations=2, min_variance=1e-2, min_variance_reduction=0,
+                 random_feature_selection=False, feature_sample_size_function=math.sqrt):
+        DecisionTree.__init__(self, max_depth, min_observations, min_variance, min_variance_reduction,
+                              random_feature_selection, feature_sample_size_function)
         RegressionModel.__init__(self)
 
     def _compute_impurity(self, labels_sr):
@@ -650,3 +665,90 @@ class DecisionTreeRegression(DecisionTree, RegressionModel):
 
     def _compute_leaf_node_value(self, labels_sr):
         return labels_sr.mean()
+
+
+class BootstrapAggregating(Model):
+    """A meta model that trains multiple models on random subsets of the training data set sampled with replacement."""
+    def __init__(self, base_model, number_of_models, sample_size_function, number_of_processes):
+        super(BootstrapAggregating, self).__init__()
+        self.base_model = base_model
+        self.number_of_models = number_of_models
+        self.sample_size_function = sample_size_function if sample_size_function is not None else lambda n: n
+        self.number_of_processes = min(number_of_models, number_of_processes)
+        self._models = None
+
+    def _aggregate_predictions(self, list_of_predictions_sr: typing.List[pd.Series]) -> pd.Series:
+        pass
+
+    @staticmethod
+    def _build_model(base_model, sample_size, observations_df, labels_sr):
+        model = copy.deepcopy(base_model)
+        random.seed()
+        indices = [observations_df.index[random.randint(0, len(observations_df.index) - 1)] for _ in range(sample_size)]
+        observations_sample_df = observations_df.reindex(indices).reset_index(drop=True)
+        labels_sample_sr = labels_sr.reindex(indices).reset_index(drop=True)
+        model.fit(observations_sample_df, labels_sample_sr)
+        return model
+
+    @staticmethod
+    def _make_prediction(model, observations_df):
+        return model.predict(observations_df)
+
+    def _fit(self, observations_df, labels_sr):
+        sample_size = self.sample_size_function(len(observations_df.index))
+        with mp.Pool(self.number_of_processes) as p:
+            futures = [p.apply_async(self._build_model, args=(self.base_model, sample_size, observations_df, labels_sr))
+                       for _ in range(self.number_of_models)]
+            self._models = [f.get() for f in futures]
+
+    def _predict(self, observations_df):
+        with mp.Pool(self.number_of_processes) as p:
+            futures = [p.apply_async(self._make_prediction, args=(model, observations_df)) for model in self._models]
+            return self._aggregate_predictions([f.get() for f in futures])
+
+
+class BootstrapAggregatingClassification(BootstrapAggregating, ClassificationModel):
+    """A bootstrap aggregating classification meta model."""
+    def __init__(self, base_model, number_of_models, sample_size_function=None, number_of_processes=mp.cpu_count()):
+        BootstrapAggregating.__init__(self, base_model, number_of_models, sample_size_function, number_of_processes)
+        ClassificationModel.__init__(self)
+
+    def _aggregate_predictions(self, list_of_predictions_sr):
+        return pd.concat(list_of_predictions_sr, axis=1).apply(lambda r: r.value_counts().index[0], axis=1,
+                                                               result_type='reduce')
+
+
+class BootstrapAggregatingRegression(BootstrapAggregating, RegressionModel):
+    """A bootstrap aggregating regression meta model."""
+    def __init__(self, base_model, number_of_models, sample_size_function=None, number_of_processes=mp.cpu_count()):
+        BootstrapAggregating.__init__(self, base_model, number_of_models, sample_size_function, number_of_processes)
+        RegressionModel.__init__(self)
+
+    def _aggregate_predictions(self, list_of_predictions_sr):
+        return pd.concat(list_of_predictions_sr, axis=1).apply(lambda r: r.mean(), axis=1, result_type='reduce')
+
+
+class RandomForestClassification(BootstrapAggregatingClassification):
+    """A random forest classification model."""
+    def __init__(self, number_of_models, sample_size_function=None, max_depth=None, min_observations=2,
+                 min_entropy=1e-5, min_info_gain=0, feature_sample_size_function=math.sqrt,
+                 number_of_processes=mp.cpu_count()):
+        super(RandomForestClassification, self)\
+            .__init__(DecisionTreeClassification(max_depth=max_depth, min_observations=min_observations,
+                                                 min_entropy=min_entropy, min_info_gain=min_info_gain,
+                                                 random_feature_selection=True,
+                                                 feature_sample_size_function=feature_sample_size_function),
+                      number_of_models, sample_size_function, number_of_processes)
+
+
+class RandomForestRegression(BootstrapAggregatingRegression):
+    """A random forest regression model."""
+    def __init__(self, number_of_models, sample_size_function=None, max_depth=None, min_observations=2,
+                 min_variance=1e-2, min_variance_reduction=0, feature_sample_size_function=math.sqrt,
+                 number_of_processes=mp.cpu_count()):
+        super(RandomForestRegression, self)\
+            .__init__(DecisionTreeRegression(max_depth=max_depth, min_observations=min_observations,
+                                             min_variance=min_variance, min_variance_reduction=min_variance_reduction,
+                                             random_feature_selection=True,
+                                             feature_sample_size_function=feature_sample_size_function),
+                      number_of_models, sample_size_function, number_of_processes)

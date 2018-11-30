@@ -2,6 +2,7 @@ import osml.data as osmld
 import osml.model as osmlm
 import pytest
 import pandas as pd
+import sklearn.ensemble as ske
 import sklearn.linear_model as sklm
 import sklearn.naive_bayes as sknb
 import sklearn.neighbors as sknn
@@ -12,17 +13,23 @@ import sklearn.tree as skt
     (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.LinearRegression(), 40.),
     (osmld.ExamDataSet('data/exam/ex4x.dat', 'data/exam/ex4y.dat'), osmlm.LogisticRegression(), .7),
     (osmld.TitanicDataSet('data/titanic/titanic.csv'), osmlm.LogisticRegression(), .7),
-    (osmld.IrisDataSet('data/iris/iris.csv'), osmlm.MultiBinaryClassification(osmlm.LogisticRegression), .25),
+    (osmld.IrisDataSet('data/iris/iris.csv'), osmlm.MultiBinaryClassification(osmlm.LogisticRegression(100)), .1),
     (osmld.IrisDataSet('data/iris/iris.csv'), osmlm.NaiveBayes(), .2),
     (osmld.TitanicDataSet('data/titanic/titanic.csv'), osmlm.NaiveBayes(), .4),
     (osmld.MushroomDataSet('data/mushroom/mushroom.csv'), osmlm.NaiveBayes(), .2),
-    (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.KNearestNeighborsRegression(), 40.),
+    (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.KNearestNeighborsRegression(), 7.),
     (osmld.ExamDataSet('data/exam/ex4x.dat', 'data/exam/ex4y.dat'), osmlm.KNearestNeighborsClassification(), .6),
     (osmld.IrisDataSet('data/iris/iris.csv'), osmlm.KNearestNeighborsClassification(), .2),
-    (osmld.MushroomDataSet('data/mushroom/mushroom.csv'), osmlm.DecisionTreeClassification(), .02),
+    (osmld.MushroomDataSet('data/mushroom/mushroom.csv'), osmlm.DecisionTreeClassification(), .1),
     (osmld.IrisDataSet('data/iris/iris.csv'), osmlm.DecisionTreeClassification(), .3),
-    (osmld.TitanicDataSet('data/titanic/titanic.csv'), osmlm.DecisionTreeClassification(), .35),
-    (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.DecisionTreeRegression(), 7.)
+    (osmld.TitanicDataSet('data/titanic/titanic.csv'), osmlm.DecisionTreeClassification(), .4),
+    (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.DecisionTreeRegression(), 7.),
+    (osmld.IrisDataSet('data/iris/iris.csv'), osmlm.BootstrapAggregatingClassification(
+        osmlm.MultiBinaryClassification(osmlm.LogisticRegression(100)), 10), .1),
+    (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.BootstrapAggregatingRegression(
+        osmlm.LinearRegression(), 10), 6.5),
+    (osmld.IrisDataSet('data/iris/iris.csv'), osmlm.RandomForestClassification(10), .2),
+    (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.RandomForestRegression(5), 6.2)
 ])
 def test_model_loss(data_set, model, max_test_loss):
     model.fit(data_set.get_training_observations(), data_set.get_training_labels())
@@ -41,15 +48,19 @@ def test_model_loss(data_set, model, max_test_loss):
     (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.KNearestNeighborsRegression(),
         sknn.KNeighborsRegressor(n_neighbors=7, weights='distance'), .9),
     (osmld.ExamDataSet('data/exam/ex4x.dat', 'data/exam/ex4y.dat'),
-        osmlm.KNearestNeighborsClassification(), sknn.KNeighborsClassifier(n_neighbors=7, weights='distance'), .8),
+        osmlm.KNearestNeighborsClassification(), sknn.KNeighborsClassifier(n_neighbors=7, weights='distance'), .7),
     (osmld.IrisDataSet('data/iris/iris.csv'), osmlm.KNearestNeighborsClassification(),
         sknn.KNeighborsClassifier(n_neighbors=7, weights='distance'), .9),
     (osmld.MushroomDataSet('data/mushroom/mushroom.csv'), osmlm.DecisionTreeClassification(),
-        skt.DecisionTreeClassifier(), .99),
+        skt.DecisionTreeClassifier(), .95),
     (osmld.TitanicDataSet('data/titanic/titanic.csv'), osmlm.DecisionTreeClassification(),
         skt.DecisionTreeClassifier(), .85),
     (osmld.IrisDataSet('data/iris/iris.csv'), osmlm.DecisionTreeClassification(), skt.DecisionTreeClassifier(), .85),
-    (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.DecisionTreeRegression(), skt.DecisionTreeRegressor(), .8)
+    (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.DecisionTreeRegression(), skt.DecisionTreeRegressor(), .75),
+    (osmld.IrisDataSet('data/iris/iris.csv'), osmlm.RandomForestClassification(number_of_models=10),
+        ske.RandomForestClassifier(n_estimators=10), .9),
+    (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.RandomForestRegression(number_of_models=10),
+        ske.RandomForestRegressor(n_estimators=10), .75)
 ])
 def test_model_accuracy_compared_to_sklearn(data_set, model, sk_model, min_accuracy_compared_to_sk):
     model.fit(data_set.get_training_observations(), data_set.get_training_labels())
