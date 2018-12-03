@@ -11,6 +11,8 @@ import typing
 class Model:
     """An abstract class representing a statistical model or machine learning algorithm."""
     def __init__(self, epsilon=1e-8):
+        if epsilon is None or epsilon <= 0:
+            raise ValueError
         self._observation_types = None
         self._label_type = None
         self._label_name = ''
@@ -172,20 +174,35 @@ class BinaryClassificationModel(ClassificationModel):
 
 class MultiBinaryClassification(ClassificationModel):
     """A wrapper class that uses multiple binary classifiers for multi-class classification."""
-    def __init__(self, base_binary_classifier):
+    def __init__(self, base_binary_classifier, number_of_processes=1):
         super(MultiBinaryClassification, self).__init__()
+        if not isinstance(base_binary_classifier, BinaryClassificationModel):
+            raise ValueError
+        if number_of_processes is None or number_of_processes < 1:
+            raise ValueError
         self.base_binary_classifier = base_binary_classifier
+        self.number_of_processes = number_of_processes
         self._classes = None
         self._binary_classifiers = None
 
+    @staticmethod
+    def _build_binary_classifier(base_binary_classifier, observations_df, labels_sr, klass):
+        classifier = copy.deepcopy(base_binary_classifier)
+        binary_labels_sr = labels_sr.apply(lambda label: 1 if label == klass else 0)
+        classifier.fit(observations_df, binary_labels_sr)
+        return classifier
+
     def _fit(self, observations_df, labels_sr):
         self._classes = labels_sr.unique()
-        self._binary_classifiers = []
-        for klass in self._classes:
-            classifier = copy.deepcopy(self.base_binary_classifier)
-            binary_labels_sr = labels_sr.apply(lambda label: 1 if label == klass else 0)
-            classifier.fit(observations_df, binary_labels_sr)
-            self._binary_classifiers.append(classifier)
+        base = self.base_binary_classifier
+        if self.number_of_processes > 1:
+            with mp.Pool(min(len(self._classes), self.number_of_processes)) as pool:
+                futures = [pool.apply_async(self._build_binary_classifier, args=(base, observations_df, labels_sr, c))
+                           for c in self._classes]
+                self._binary_classifiers = [f.get() for f in futures]
+        else:
+            self._binary_classifiers = [self._build_binary_classifier(base, observations_df, labels_sr, c)
+                                        for c in self._classes]
 
     def _predict(self, observations_df):
         predictions = []
@@ -211,10 +228,10 @@ def _bias_trick(observations_df):
 
 
 class LinearRegression(RegressionModel):
-    """A linear regression model using ordinary least squares."""
+    """A linear regression model fitted using ordinary least squares."""
     def __init__(self):
         super(LinearRegression, self).__init__()
-        self.beta = None
+        self._beta = None
 
     def _fit(self, observations_df, labels_sr):
         # Take the partial derivatives of the sum of squared errors w.r.t. both parameters of the model (weights and
@@ -224,19 +241,90 @@ class LinearRegression(RegressionModel):
         # analytic solution.
         observations = _bias_trick(observations_df)
         observations_trans = observations.transpose()
-        self.beta = np.linalg.inv(observations_trans @ observations) @ (observations_trans @ labels_sr.values)
+        self._beta = np.linalg.inv(observations_trans @ observations) @ (observations_trans @ labels_sr.values)
 
     def _predict(self, observations_df):
-        return _bias_trick(observations_df) @ self.beta
+        return _bias_trick(observations_df) @ self._beta
 
     def _test(self, observations_df, labels_sr):
         return np.square(self._predict(observations_df) - labels_sr.values).mean()
 
 
+class RidgeRegression(LinearRegression):
+    """A linear ridge regression model fitted using ordinary least squares."""
+    def __init__(self, alpha=1e-2):
+        super(RidgeRegression, self).__init__()
+        if alpha is None or alpha < 0:
+            raise ValueError
+        self.alpha = alpha
+
+    def _fit(self, observations_df, labels_sr):
+        observations = _bias_trick(observations_df)
+        observations_trans = observations.transpose()
+        self._beta = np.linalg.inv((observations_trans @ observations) + self.alpha) @ \
+            (observations_trans @ labels_sr.values)
+
+    def _test(self, observations_df, labels_sr):
+        return np.square(self._predict(observations_df) - labels_sr.values).mean() + \
+               self.alpha * np.square(self._beta).sum()
+
+
+class LassoRegression(LinearRegression):
+    """A Least Absolute Shrinkage and Selection Operator regression model fitted using coordinate descent."""
+    def __init__(self, alpha=1e-2, iterations=100):
+        super(LassoRegression, self).__init__()
+        if alpha is None or alpha < 0:
+            raise ValueError
+        if iterations is None or iterations <= 0:
+            raise ValueError
+        self.alpha = alpha
+        self.iterations = iterations
+
+    def _soft_threshold(self, p):
+        if p < -self.alpha:
+            return p + self.alpha
+        if -self.alpha <= p <= self.alpha:
+            return 0
+        if p > self.alpha:
+            return p - self.alpha
+
+    def _fit(self, observations_df, labels_sr):
+        observations = _bias_trick(observations_df)
+        labels = labels_sr.values
+        self._beta = np.zeros((observations.shape[1], ))
+        prev_loss = float('inf')
+        for i in range(self.iterations):
+            # Optimize the parameters analytically dimension by dimension.
+            for j in range(observations.shape[1]):
+                # Solve for the (sub)derivative of the loss function with respect to the jth parameter.
+                obs_j = observations[:, j]
+                obs_not_j = np.delete(observations, j, axis=1)
+                beta_not_j = np.delete(self._beta, j)
+                obs_j_trans = obs_j.transpose()
+                p = obs_j_trans @ labels - obs_j_trans @ (obs_not_j @ beta_not_j)
+                z = obs_j_trans @ obs_j
+                # As the absolute value function is not differentiable at 0, use soft thresholding.
+                self._beta[j] = self._soft_threshold(p) / z
+            # If a full cycle of optimization does not reduce the loss, the model has converged.
+            loss = self.test(observations_df, labels_sr)
+            if loss < prev_loss:
+                prev_loss = loss
+            else:
+                break
+
+    def _test(self, observations_df, labels_sr):
+        return np.square(self._predict(observations_df) - labels_sr.values).mean() + \
+               self.alpha * np.abs(self._beta).sum()
+
+
 class LogisticRegression(BinaryClassificationModel):
-    """A logistic regression model using the Newton-Raphson method."""
+    """A logistic regression model fitted using the Newton-Raphson method."""
     def __init__(self, iterations=100, min_gradient=1e-7):
         super(LogisticRegression, self).__init__()
+        if iterations is None or iterations < 1:
+            raise ValueError
+        if min_gradient is None or min_gradient < 0:
+            raise ValueError
         self.iterations = iterations
         self.min_gradient = min_gradient
         self._beta = None
@@ -273,6 +361,8 @@ class NaiveBayes(ClassificationModel):
     """A naive Bayes multinomial classification model."""
     def __init__(self, laplace_smoothing=1.):
         super(NaiveBayes, self).__init__()
+        if laplace_smoothing is None or laplace_smoothing < 0:
+            raise ValueError
         self.laplace_smoothing = laplace_smoothing
         self._classes = None
         self._class_priors = None
@@ -394,7 +484,9 @@ class KNearestNeighbors(Model):
     """An abstract weighted k-nearest neighbors model."""
     def __init__(self, k, standardize):
         super(KNearestNeighbors, self).__init__()
-        if k <= 0:
+        if k is None or k < 1:
+            raise ValueError
+        if not isinstance(standardize, bool):
             raise ValueError
         self.k = k
         self.standardize = standardize
@@ -484,6 +576,8 @@ class DecisionTree(Model):
     def __init__(self, max_depth, min_observations, min_impurity, min_impurity_reduction, random_feature_selection,
                  feature_sample_size_function):
         super(DecisionTree, self).__init__()
+        if random_feature_selection is None or not isinstance(random_feature_selection, bool):
+            raise ValueError
         self.max_depth = max_depth
         self.min_observations = max(2, min_observations) if min_observations is not None else 2
         self.min_impurity = max(0, min_impurity) if min_impurity is not None else 0
@@ -670,6 +764,12 @@ class DecisionTreeRegression(DecisionTree, RegressionModel):
 class BootstrapAggregating(Model):
     """A meta model that trains multiple models on random subsets of the training data set sampled with replacement."""
     def __init__(self, base_model, number_of_models, sample_size_function, number_of_processes):
+        if base_model is None or not isinstance(base_model, Model):
+            raise ValueError
+        if number_of_models is None or number_of_models < 1:
+            raise ValueError
+        if number_of_processes is None or number_of_processes < 1:
+            raise ValueError
         super(BootstrapAggregating, self).__init__()
         self.base_model = base_model
         self.number_of_models = number_of_models
@@ -696,20 +796,31 @@ class BootstrapAggregating(Model):
 
     def _fit(self, observations_df, labels_sr):
         sample_size = self.sample_size_function(len(observations_df.index))
-        with mp.Pool(self.number_of_processes) as p:
-            futures = [p.apply_async(self._build_model, args=(self.base_model, sample_size, observations_df, labels_sr))
-                       for _ in range(self.number_of_models)]
-            self._models = [f.get() for f in futures]
+        if self.number_of_processes > 1:
+            with mp.Pool(self.number_of_processes) as pool:
+                futures = [pool.apply_async(self._build_model,
+                                            args=(self.base_model, sample_size, observations_df, labels_sr))
+                           for _ in range(self.number_of_models)]
+                self._models = [f.get() for f in futures]
+        else:
+            self._models = [self._build_model(self.base_model, sample_size, observations_df, labels_sr)
+                            for _ in range(self.number_of_models)]
 
     def _predict(self, observations_df):
-        with mp.Pool(self.number_of_processes) as p:
-            futures = [p.apply_async(self._make_prediction, args=(model, observations_df)) for model in self._models]
-            return self._aggregate_predictions([f.get() for f in futures])
+        if self.number_of_processes > 1:
+            with mp.Pool(self.number_of_processes) as pool:
+                futures = [pool.apply_async(self._make_prediction, args=(model, observations_df))
+                           for model in self._models]
+                return self._aggregate_predictions([f.get() for f in futures])
+        else:
+            return [self._make_prediction(model, observations_df) for model in self._models]
 
 
 class BootstrapAggregatingClassification(BootstrapAggregating, ClassificationModel):
     """A bootstrap aggregating classification meta model."""
     def __init__(self, base_model, number_of_models, sample_size_function=None, number_of_processes=mp.cpu_count()):
+        if not isinstance(base_model, ClassificationModel):
+            raise ValueError
         BootstrapAggregating.__init__(self, base_model, number_of_models, sample_size_function, number_of_processes)
         ClassificationModel.__init__(self)
 
@@ -721,6 +832,8 @@ class BootstrapAggregatingClassification(BootstrapAggregating, ClassificationMod
 class BootstrapAggregatingRegression(BootstrapAggregating, RegressionModel):
     """A bootstrap aggregating regression meta model."""
     def __init__(self, base_model, number_of_models, sample_size_function=None, number_of_processes=mp.cpu_count()):
+        if not isinstance(base_model, RegressionModel):
+            raise ValueError
         BootstrapAggregating.__init__(self, base_model, number_of_models, sample_size_function, number_of_processes)
         RegressionModel.__init__(self)
 

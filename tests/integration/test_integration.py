@@ -10,15 +10,17 @@ import sklearn.tree as skt
 
 
 @pytest.mark.parametrize('data_set,model,max_test_loss', [
-    (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.LinearRegression(), 40.),
+    (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.LinearRegression(), 38.),
+    (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.RidgeRegression(), 50.),
+    (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.LassoRegression(), 42.),
     (osmld.ExamDataSet('data/exam/ex4x.dat', 'data/exam/ex4y.dat'), osmlm.LogisticRegression(), .7),
     (osmld.TitanicDataSet('data/titanic/titanic.csv'), osmlm.LogisticRegression(), .7),
-    (osmld.IrisDataSet('data/iris/iris.csv'), osmlm.MultiBinaryClassification(osmlm.LogisticRegression(100)), .1),
+    (osmld.IrisDataSet('data/iris/iris.csv'), osmlm.MultiBinaryClassification(osmlm.LogisticRegression(100), 3), .1),
     (osmld.IrisDataSet('data/iris/iris.csv'), osmlm.NaiveBayes(), .2),
     (osmld.TitanicDataSet('data/titanic/titanic.csv'), osmlm.NaiveBayes(), .4),
     (osmld.MushroomDataSet('data/mushroom/mushroom.csv'), osmlm.NaiveBayes(), .2),
     (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.KNearestNeighborsRegression(), 7.),
-    (osmld.ExamDataSet('data/exam/ex4x.dat', 'data/exam/ex4y.dat'), osmlm.KNearestNeighborsClassification(), .6),
+    (osmld.ExamDataSet('data/exam/ex4x.dat', 'data/exam/ex4y.dat'), osmlm.KNearestNeighborsClassification(), .72),
     (osmld.IrisDataSet('data/iris/iris.csv'), osmlm.KNearestNeighborsClassification(), .2),
     (osmld.MushroomDataSet('data/mushroom/mushroom.csv'), osmlm.DecisionTreeClassification(), .1),
     (osmld.IrisDataSet('data/iris/iris.csv'), osmlm.DecisionTreeClassification(), .3),
@@ -39,8 +41,10 @@ def test_model_loss(data_set, model, max_test_loss):
 
 @pytest.mark.parametrize('data_set,model,sk_model,min_accuracy_compared_to_sk', [
     (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.LinearRegression(), sklm.LinearRegression(), .98),
+    (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.RidgeRegression(), sklm.Ridge(), .98),
+    (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.LassoRegression(), sklm.Lasso(), .9),
     (osmld.ExamDataSet('data/exam/ex4x.dat', 'data/exam/ex4y.dat'), osmlm.LogisticRegression(),
-        sklm.LogisticRegression(solver='liblinear'), .9),
+        sklm.LogisticRegression(solver='liblinear'), .75),
     (osmld.TitanicDataSet('data/titanic/titanic.csv'), osmlm.LogisticRegression(),
         sklm.LogisticRegression(solver='liblinear'), .9),
     (osmld.IrisDataSet('data/iris/iris.csv'), osmlm.NaiveBayes(), sknb.GaussianNB(), .98),
