@@ -97,6 +97,7 @@ class BostonDataSet(DataSet):
     """The Boston house pricing data set."""
     def __init__(self, data_path, shuffle_data=True, reset_indices=True, test_share=.3, label_column_idx=13):
         complete_df = pd.read_csv(data_path, index_col=False)
+        complete_df = complete_df.astype(np.float_)
         complete_df['chas'] = complete_df['chas'].astype(np.int_)
         labels_sr = pd.Series(complete_df[complete_df.columns[label_column_idx]])
         observations_df = complete_df.drop(complete_df.columns[label_column_idx], axis=1)

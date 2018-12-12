@@ -41,10 +41,10 @@ class Model:
     def _predict(self, observations_df: pd.DataFrame) -> pd.Series:
         pass
 
-    def _test(self, observations_df: pd.DataFrame, labels_sr: pd.Series) -> float:
-        return (1 + self._epsilon) / (self.evaluate(self.predict(observations_df), labels_sr) + self._epsilon) - 1
-
     def _evaluate(self, predictions_sr: pd.Series, labels_sr: pd.Series) -> float:
+        pass
+
+    def _test(self, observations_df: pd.DataFrame, labels_sr: pd.Series) -> float:
         pass
 
     def fit(self, observations_df, labels_sr):
@@ -84,8 +84,30 @@ class Model:
         self._validate_labels(predictions)
         return predictions
 
+    def evaluate(self, predictions_sr, labels_sr):
+        """A function for evaluating the accuracy of the model's predictions. It can be either the minimized function
+        or some other metric of the model's explanatory power based on its predictions.
+
+        Args:
+            predictions_sr: A series of predictions.
+            labels_sr: A series of target values where each element is the label of the corresponding row in the data
+            frame of observations.
+
+        Returns:
+            A non-standardized numeric measure of prediction error. It is not comparable across different model types.
+            The more accurate the predictions, the smaller this value.
+
+        Raises:
+            ValueError: If the number of observations is 0 or it does not match the number of labels. Or if the types of
+            the features or the labels are not the same as those of the data the model was fit to.
+        """
+        self._validate_labels(predictions_sr)
+        self._validate_labels(labels_sr)
+        return self._evaluate(predictions_sr, labels_sr)
+
     def test(self, observations_df, labels_sr):
         """Computes the prediction error of the model on a test data set in terms of the function the model minimizes.
+        It is not applicable to models that do not optimize a well-defined loss function.
 
         Args:
             observations_df: A 2D frame of data points where each column is a feature and each row is an observation.
@@ -101,26 +123,6 @@ class Model:
         """
         self._validate_observations_and_labels(observations_df, labels_sr)
         return self._test(observations_df, labels_sr)
-
-    def evaluate(self, predictions_sr, labels_sr):
-        """A function for evaluating the accuracy of the model's predictions. It can be either the minimized function
-        or some other metric of the model's explanatory power based on its predictions.
-
-        Args:
-            predictions_sr: A series of predictions.
-            labels_sr: A series of target values where each element is the label of the corresponding row in the data
-            frame of observations.
-
-        Returns:
-            A non-standardized numeric measure of prediction error. It is not comparable across different model types.
-
-        Raises:
-            ValueError: If the number of observations is 0 or it does not match the number of labels. Or if the types of
-            the features or the labels are not the same as those of the data the model was fit to.
-        """
-        self._validate_labels(predictions_sr)
-        self._validate_labels(labels_sr)
-        return self._evaluate(predictions_sr, labels_sr)
 
 
 def _is_continuous(data_type):
@@ -142,8 +144,8 @@ class RegressionModel(Model):
             raise ValueError
 
     def _evaluate(self, predictions_sr, labels_sr):
-        # The reciprocal of the root mean squared error plus one.
-        return 1 / (np.sqrt(np.square(predictions_sr.values - labels_sr.values).mean()) + 1)
+        # The root mean squared error.
+        return np.sqrt(np.square(predictions_sr.values - labels_sr.values).mean())
 
 
 class ClassificationModel(Model):
@@ -157,8 +159,8 @@ class ClassificationModel(Model):
             raise ValueError
 
     def _evaluate(self, predictions_sr, labels_sr):
-        # The number of correct predictions per the total number of predictions.
-        return len([p for i, p in predictions_sr.iteritems() if p == labels_sr[i]]) / predictions_sr.count()
+        # The number of incorrect predictions per the total number of predictions.
+        return len([p for i, p in predictions_sr.iteritems() if p != labels_sr[i]]) / predictions_sr.count()
 
 
 class BinaryClassificationModel(ClassificationModel):
@@ -170,54 +172,6 @@ class BinaryClassificationModel(ClassificationModel):
         super(BinaryClassificationModel, self)._validate_labels(labels_sr)
         if not _is_categorical(labels_sr.dtype) or any(v != 0 and v != 1 for v in labels_sr.unique()):
             raise ValueError
-
-
-class MultiBinaryClassification(ClassificationModel):
-    """A wrapper class that uses multiple binary classifiers for multi-class classification."""
-    def __init__(self, base_binary_classifier, number_of_processes=1):
-        super(MultiBinaryClassification, self).__init__()
-        if not isinstance(base_binary_classifier, BinaryClassificationModel):
-            raise ValueError
-        if number_of_processes is None or number_of_processes < 1:
-            raise ValueError
-        self.base_binary_classifier = base_binary_classifier
-        self.number_of_processes = number_of_processes
-        self._classes = None
-        self._binary_classifiers = None
-
-    @staticmethod
-    def _build_binary_classifier(base_binary_classifier, observations_df, labels_sr, klass):
-        classifier = copy.deepcopy(base_binary_classifier)
-        binary_labels_sr = labels_sr.apply(lambda label: 1 if label == klass else 0)
-        classifier.fit(observations_df, binary_labels_sr)
-        return classifier
-
-    def _fit(self, observations_df, labels_sr):
-        self._classes = labels_sr.unique()
-        base = self.base_binary_classifier
-        if self.number_of_processes > 1:
-            with mp.Pool(min(len(self._classes), self.number_of_processes)) as pool:
-                futures = [pool.apply_async(self._build_binary_classifier, args=(base, observations_df, labels_sr, c))
-                           for c in self._classes]
-                self._binary_classifiers = [f.get() for f in futures]
-        else:
-            self._binary_classifiers = [self._build_binary_classifier(base, observations_df, labels_sr, c)
-                                        for c in self._classes]
-
-    def _predict(self, observations_df):
-        predictions = []
-        label_sr = pd.Series([1])
-        for i, row in observations_df.iterrows():
-            most_confident_prediction = None
-            lowest_loss = None
-            for j, classifier in enumerate(self._binary_classifiers):
-                loss = classifier.test(pd.DataFrame(index=[0], columns=row.index,
-                                                    data=row.values.reshape(1, len(row.index))), label_sr)
-                if lowest_loss is None or loss < lowest_loss:
-                    lowest_loss = loss
-                    most_confident_prediction = self._classes[j]
-            predictions.append(most_confident_prediction)
-        return predictions
 
 
 def _bias_trick(observations_df):
@@ -294,7 +248,7 @@ class LassoRegression(LinearRegression):
         self._beta = np.zeros((observations.shape[1], ))
         prev_loss = float('inf')
         for i in range(self.iterations):
-            # Optimize the parameters analytically dimension by dimension.
+            # Optimize the parameters analytically dimension by dimension (exact line search).
             for j in range(observations.shape[1]):
                 # Solve for the (sub)derivative of the loss function with respect to the jth parameter.
                 obs_j = observations[:, j]
@@ -317,6 +271,10 @@ class LassoRegression(LinearRegression):
                self.alpha * np.abs(self._beta).sum()
 
 
+def _logistic_function(x):
+    return np.reciprocal(np.exp(-x) + 1)
+
+
 class LogisticRegression(BinaryClassificationModel):
     """A logistic regression model fitted using the Newton-Raphson method."""
     def __init__(self, iterations=100, min_gradient=1e-7):
@@ -329,9 +287,6 @@ class LogisticRegression(BinaryClassificationModel):
         self.min_gradient = min_gradient
         self._beta = None
 
-    def _logistic_function(self, observations):
-        return np.reciprocal(np.exp(-observations @ self._beta) + 1)
-
     def _fit(self, observations_df, labels_sr):
         # Use Newton's method to numerically approximate the root of the log likelihood function's derivative.
         observations = _bias_trick(observations_df)
@@ -339,21 +294,21 @@ class LogisticRegression(BinaryClassificationModel):
         labels = labels_sr.values
         self._beta = np.zeros(observations.shape[1], )
         for i in range(self.iterations):
-            predictions = self._logistic_function(observations)
+            predictions = _logistic_function(observations @ self._beta)
             first_derivative = observations_trans @ (predictions - labels)
-            if np.all(first_derivative <= self.min_gradient):
+            if np.all(np.absolute(first_derivative) <= self.min_gradient):
                 break
             # If the number of parameters is N, the Hessian will take the shape of an N by N matrix.
             second_derivative = (observations_trans * (predictions * (1 - predictions))) @ observations
             self._beta = self._beta - np.linalg.inv(second_derivative) @ first_derivative
 
     def _predict(self, observations_df):
-        return np.rint(self._logistic_function(_bias_trick(observations_df)))
+        return np.rint(_logistic_function(_bias_trick(observations_df) @ self._beta))
 
     def _test(self, observations_df, labels_sr):
         labels = labels_sr.values
         observations = _bias_trick(observations_df)
-        predictions = np.minimum(self._logistic_function(observations) + self._epsilon, 1 - self._epsilon)
+        predictions = np.minimum(_logistic_function(observations @ self._beta) + self._epsilon, 1 - self._epsilon)
         return -((np.log(predictions) * labels + np.log(1 - predictions) * (1 - labels)).mean())
 
 
@@ -404,6 +359,9 @@ class NaiveBayes(ClassificationModel):
                     prediction = label_class
             predictions.append(prediction)
         return predictions
+
+    def _test(self, observations_df, labels_sr):
+        return None
 
     class FeatureStatistics:
         """An abstract base class for feature statistics."""
@@ -495,22 +453,12 @@ class KNearestNeighbors(Model):
         self._preprocessed_observations = None
         self._labels = None
 
-    def _fit(self, observations_df, labels_sr):
-        if len(observations_df.index) < self.k + 1:
-            raise ValueError
-        if self.standardize:
-            self._observations_mean = observations_df.values.mean(axis=0)
-            self._observations_sd = np.sqrt(np.square(observations_df.values - self._observations_mean).mean(axis=0))
-            self._preprocessed_observations = (observations_df.values - self._observations_mean) / self._observations_sd
-        else:
-            self._preprocessed_observations = observations_df.values
-        self._labels = labels_sr.values
-
     def _distances(self, observation):
         # Simple Euclidian distance.
         return np.sqrt(np.square(self._preprocessed_observations - observation).sum(axis=1))
 
-    def _weight(self, distance):
+    @staticmethod
+    def _weight(distance):
         # Gaussian kernel function.
         return math.exp(-(distance ** 2) / 2) / math.sqrt(2 * math.pi)
 
@@ -536,6 +484,20 @@ class KNearestNeighbors(Model):
             else:
                 weighted_nearest_neighbor_labels[label] = weight
         return weighted_nearest_neighbor_labels
+
+    def _fit(self, observations_df, labels_sr):
+        if len(observations_df.index) < self.k + 1:
+            raise ValueError
+        if self.standardize:
+            self._observations_mean = observations_df.values.mean(axis=0)
+            self._observations_sd = np.sqrt(np.square(observations_df.values - self._observations_mean).mean(axis=0))
+            self._preprocessed_observations = (observations_df.values - self._observations_mean) / self._observations_sd
+        else:
+            self._preprocessed_observations = observations_df.values
+        self._labels = labels_sr.values
+
+    def _test(self, observations_df, labels_sr):
+        return None
 
 
 class KNearestNeighborsRegression(KNearestNeighbors, RegressionModel):
@@ -711,6 +673,9 @@ class DecisionTree(Model):
             predictions.append(node.value)
         return predictions
 
+    def _test(self, observations_df, labels_sr):
+        return None
+
     class DecisionTreeNode:
         """A class representing a decision tree node."""
         def __init__(self):
@@ -721,7 +686,7 @@ class DecisionTree(Model):
 
 class DecisionTreeClassification(DecisionTree, ClassificationModel):
     """A decision tree classifier model."""
-    def __init__(self, max_depth=None, min_observations=2, min_entropy=1e-5, min_info_gain=0,
+    def __init__(self, max_depth=None, min_observations=2, min_entropy=1e-5, min_info_gain=0.,
                  random_feature_selection=False, feature_sample_size_function=math.sqrt):
         DecisionTree.__init__(self, max_depth, min_observations, min_entropy, min_info_gain, random_feature_selection,
                               feature_sample_size_function)
@@ -732,7 +697,7 @@ class DecisionTreeClassification(DecisionTree, ClassificationModel):
         self._classes = labels_sr.unique()
 
     def _compute_impurity(self, labels_sr):
-        # Entropy.
+        # Shannon entropy.
         entropy = 0
         for klass in self._classes:
             count = labels_sr[labels_sr == klass].count()
@@ -747,7 +712,7 @@ class DecisionTreeClassification(DecisionTree, ClassificationModel):
 
 class DecisionTreeRegression(DecisionTree, RegressionModel):
     """A decision tree classifier model."""
-    def __init__(self, max_depth=None, min_observations=2, min_variance=1e-2, min_variance_reduction=0,
+    def __init__(self, max_depth=None, min_observations=2, min_variance=1e-5, min_variance_reduction=0.,
                  random_feature_selection=False, feature_sample_size_function=math.sqrt):
         DecisionTree.__init__(self, max_depth, min_observations, min_variance, min_variance_reduction,
                               random_feature_selection, feature_sample_size_function)
@@ -759,6 +724,57 @@ class DecisionTreeRegression(DecisionTree, RegressionModel):
 
     def _compute_leaf_node_value(self, labels_sr):
         return labels_sr.mean()
+
+
+class MultiBinaryClassification(ClassificationModel):
+    """A meta model that uses multiple binary classifiers for multi-class classification."""
+    def __init__(self, base_binary_classifier, number_of_processes=1):
+        super(MultiBinaryClassification, self).__init__()
+        if not isinstance(base_binary_classifier, BinaryClassificationModel):
+            raise ValueError
+        if number_of_processes is None or number_of_processes < 1:
+            raise ValueError
+        self.base_binary_classifier = base_binary_classifier
+        self.number_of_processes = number_of_processes
+        self._classes = None
+        self._binary_classifiers = None
+
+    @staticmethod
+    def _build_binary_classifier(base_binary_classifier, observations_df, labels_sr, klass):
+        classifier = copy.deepcopy(base_binary_classifier)
+        binary_labels_sr = labels_sr.apply(lambda label: 1 if label == klass else 0)
+        classifier.fit(observations_df, binary_labels_sr)
+        return classifier
+
+    def _fit(self, observations_df, labels_sr):
+        self._classes = labels_sr.unique()
+        base = self.base_binary_classifier
+        if self.number_of_processes > 1:
+            with mp.Pool(min(len(self._classes), self.number_of_processes)) as pool:
+                futures = [pool.apply_async(self._build_binary_classifier, args=(base, observations_df, labels_sr, c))
+                           for c in self._classes]
+                self._binary_classifiers = [f.get() for f in futures]
+        else:
+            self._binary_classifiers = [self._build_binary_classifier(base, observations_df, labels_sr, c)
+                                        for c in self._classes]
+
+    def _predict(self, observations_df):
+        predictions = []
+        label_sr = pd.Series([1])
+        for i, row in observations_df.iterrows():
+            most_confident_prediction = None
+            lowest_loss = None
+            for j, classifier in enumerate(self._binary_classifiers):
+                loss = classifier.test(pd.DataFrame(index=[0], columns=row.index,
+                                                    data=row.values.reshape(1, len(row.index))), label_sr)
+                if lowest_loss is None or loss < lowest_loss:
+                    lowest_loss = loss
+                    most_confident_prediction = self._classes[j]
+            predictions.append(most_confident_prediction)
+        return predictions
+
+    def _test(self, observations_df, labels_sr):
+        return None
 
 
 class BootstrapAggregating(Model):
@@ -815,6 +831,9 @@ class BootstrapAggregating(Model):
         else:
             return [self._make_prediction(model, observations_df) for model in self._models]
 
+    def _test(self, observations_df, labels_sr):
+        return None
+
 
 class BootstrapAggregatingClassification(BootstrapAggregating, ClassificationModel):
     """A bootstrap aggregating classification meta model."""
@@ -841,10 +860,146 @@ class BootstrapAggregatingRegression(BootstrapAggregating, RegressionModel):
         return pd.concat(list_of_predictions_sr, axis=1).apply(lambda r: r.mean(), axis=1, result_type='reduce')
 
 
+class GradientBoosting(Model):
+    """A gradient boosting abstract meta model class."""
+    def __init__(self, base_model, iterations, sampling_factor, min_gradient, max_step_size, step_size_decay_factor,
+                 armijo_factor):
+        super(GradientBoosting, self).__init__()
+        if not isinstance(base_model, RegressionModel):
+            raise ValueError
+        if iterations is None or iterations < 1:
+            raise ValueError
+        if sampling_factor is None or not 0 < sampling_factor <= 1:
+            raise ValueError
+        if min_gradient is None or min_gradient < 0:
+            raise ValueError
+        if max_step_size is None or max_step_size <= 0:
+            raise ValueError
+        if step_size_decay_factor is None or not 0 < step_size_decay_factor < 1:
+            raise ValueError
+        if armijo_factor is None or not 0 < armijo_factor < 1:
+            raise ValueError
+        self.base_model = base_model
+        self.iterations = iterations
+        self.sampling_factor = sampling_factor
+        self.min_gradient = min_gradient
+        self.max_step_size = max_step_size
+        self.step_size_decay_factor = step_size_decay_factor
+        self.armijo_factor = armijo_factor
+        self._weighted_models = None
+
+    def _loss(self, predictions_sr: pd.Series, labels_sr: pd.Series) -> float:
+        pass
+
+    def _d_loss_wrt_predictions(self, predictions_sr: pd.Series, labels_sr: pd.Series) -> pd.Series:
+        pass
+
+    def _line_search(self, base_predictions_sr, gradient_sr, descent_direction_sr, labels_sr):
+        # Backtracking line search using the Armijo-Goldstein termination condition.
+        base_loss = self._loss(base_predictions_sr, labels_sr)
+        # The expected change of loss w.r.t. the predictions as per the first order Taylor-expansion of the loss
+        # function around the base predictions (down-scaled by a constant between 0 and 1).
+        expected_change = self.armijo_factor * np.dot(gradient_sr.values, descent_direction_sr.values)
+        step_size = self.max_step_size
+        # Keep reducing the step size until it yields a reduction in loss that matches or exceeds our expectations for
+        # a change this big in the independent variable.
+        while self._loss(base_predictions_sr + step_size * descent_direction_sr, labels_sr) > \
+                base_loss + step_size * expected_change:
+            step_size *= self.step_size_decay_factor
+        return step_size
+
+    def _fit(self, observations_df, labels_sr):
+        self._weighted_models = []
+        # TODO: initial linear estimation.
+        predictions_sr = pd.Series(np.zeros((labels_sr.count(), )))
+        for i in range(self.iterations):
+            gradient_sr = self._d_loss_wrt_predictions(predictions_sr, labels_sr)
+            if np.all(np.absolute(gradient_sr.values) <= self.min_gradient):
+                break
+            model = copy.deepcopy(self.base_model)
+            if self.sampling_factor == 1:
+                model.fit(observations_df, -gradient_sr)
+            else:
+                observations_sample_df = observations_df.sample(int(len(observations_df.index) * self.sampling_factor))
+                model.fit(observations_sample_df, -gradient_sr.reindex(observations_sample_df.index))
+            residual_predictions_sr = model.predict(observations_df)
+            weight = self._line_search(predictions_sr, gradient_sr, residual_predictions_sr, labels_sr)
+            self._weighted_models.append((model, weight))
+            predictions_sr += residual_predictions_sr * weight
+
+    def _predict(self, observations_df):
+        predictions_sr = pd.Series(np.zeros((len(observations_df.index), )))
+        for (model, weight) in self._weighted_models:
+            predictions_sr += model.predict(observations_df) * weight
+        return predictions_sr
+
+    def _test(self, observations_df: pd.DataFrame, labels_sr: pd.Series):
+        return self._loss(GradientBoosting.predict(self, observations_df), labels_sr)
+
+
+class GradientBoostingBinaryClassification(GradientBoosting, BinaryClassificationModel):
+    """A gradient boosting binary classification meta model minimizing the log loss function."""
+    def __init__(self, base_model, iterations, sampling_factor=1., min_gradient=1e-7, max_step_size=1000.,
+                 step_size_decay_factor=.7, armijo_factor=.7):
+        GradientBoosting.__init__(self, base_model, iterations, sampling_factor, min_gradient, max_step_size,
+                                  step_size_decay_factor, armijo_factor)
+        BinaryClassificationModel.__init__(self)
+
+    def _loss(self, predictions_sr, labels_sr):
+        # Binary cross entropy loss.
+        labels = labels_sr.values
+        squashed_predictions = np.minimum(_logistic_function(predictions_sr.values) + self._epsilon, 1 - self._epsilon)
+        return (-labels * np.log(squashed_predictions) - (1 - labels) * np.log(1 - squashed_predictions)).mean()
+
+    def _d_loss_wrt_predictions(self, predictions_sr, labels_sr):
+        return pd.Series((_logistic_function(predictions_sr.values) - labels_sr.values) / labels_sr.count())
+
+    def _predict(self, observations_df):
+        return pd.Series(np.rint(_logistic_function(GradientBoosting._predict(self, observations_df).values)))
+
+
+class GradientBoostingRegression(GradientBoosting, RegressionModel):
+    """A gradient boosting regression meta model minimizing the MSE loss function."""
+    def __init__(self, base_model, iterations, sampling_factor=1., min_gradient=1e-7, max_step_size=1000.,
+                 step_size_decay_factor=.7, armijo_factor=.7):
+        GradientBoosting.__init__(self, base_model, iterations, sampling_factor, min_gradient, max_step_size,
+                                  step_size_decay_factor, armijo_factor)
+        RegressionModel.__init__(self)
+
+    def _loss(self, predictions_sr, labels_sr):
+        # Mean squared error.
+        return np.square(predictions_sr.values - labels_sr.values).mean()
+
+    def _d_loss_wrt_predictions(self, predictions_sr, labels_sr):
+        return 2 / labels_sr.count() * (predictions_sr - labels_sr)
+
+
+class BaggedTreesClassification(BootstrapAggregatingClassification):
+    """A bagged trees classification model."""
+    def __init__(self, number_of_models, sample_size_function=None, max_depth=None, min_observations=2,
+                 min_entropy=1e-5, min_info_gain=0., number_of_processes=mp.cpu_count()):
+        super(BaggedTreesClassification, self)\
+            .__init__(DecisionTreeClassification(max_depth=max_depth, min_observations=min_observations,
+                                                 min_entropy=min_entropy, min_info_gain=min_info_gain,
+                                                 random_feature_selection=False),
+                      number_of_models, sample_size_function, number_of_processes)
+
+
+class BaggedTreesRegression(BootstrapAggregatingRegression):
+    """A bagged trees regression model."""
+    def __init__(self, number_of_models, sample_size_function=None, max_depth=None, min_observations=2,
+                 min_variance=1e-5, min_variance_reduction=0., number_of_processes=mp.cpu_count()):
+        super(BaggedTreesRegression, self)\
+            .__init__(DecisionTreeRegression(max_depth=max_depth, min_observations=min_observations,
+                                             min_variance=min_variance, min_variance_reduction=min_variance_reduction,
+                                             random_feature_selection=False),
+                      number_of_models, sample_size_function, number_of_processes)
+
+
 class RandomForestClassification(BootstrapAggregatingClassification):
     """A random forest classification model."""
     def __init__(self, number_of_models, sample_size_function=None, max_depth=None, min_observations=2,
-                 min_entropy=1e-5, min_info_gain=0, feature_sample_size_function=math.sqrt,
+                 min_entropy=1e-5, min_info_gain=0., feature_sample_size_function=math.sqrt,
                  number_of_processes=mp.cpu_count()):
         super(RandomForestClassification, self)\
             .__init__(DecisionTreeClassification(max_depth=max_depth, min_observations=min_observations,
@@ -857,7 +1012,7 @@ class RandomForestClassification(BootstrapAggregatingClassification):
 class RandomForestRegression(BootstrapAggregatingRegression):
     """A random forest regression model."""
     def __init__(self, number_of_models, sample_size_function=None, max_depth=None, min_observations=2,
-                 min_variance=1e-2, min_variance_reduction=0, feature_sample_size_function=math.sqrt,
+                 min_variance=1e-5, min_variance_reduction=0., feature_sample_size_function=math.sqrt,
                  number_of_processes=mp.cpu_count()):
         super(RandomForestRegression, self)\
             .__init__(DecisionTreeRegression(max_depth=max_depth, min_observations=min_observations,
@@ -865,3 +1020,44 @@ class RandomForestRegression(BootstrapAggregatingRegression):
                                              random_feature_selection=True,
                                              feature_sample_size_function=feature_sample_size_function),
                       number_of_models, sample_size_function, number_of_processes)
+
+
+class BoostedTreesBinaryClassification(GradientBoostingBinaryClassification):
+    """A gradient boosting binary classification model using regression decision trees."""
+    def __init__(self, iterations, max_depth=None, min_observations=2, min_variance=0., min_variance_reduction=0.,
+                 random_feature_selection=False, feature_sample_size_function=math.sqrt, sampling_factor=1.,
+                 min_gradient=1e-7, max_step_size=1000., step_size_decay_factor=.7, armijo_factor=.7):
+        super(BoostedTreesBinaryClassification, self)\
+            .__init__(DecisionTreeRegression(max_depth=max_depth, min_observations=min_observations,
+                                             min_variance=min_variance, min_variance_reduction=min_variance_reduction,
+                                             random_feature_selection=random_feature_selection,
+                                             feature_sample_size_function=feature_sample_size_function),
+                      iterations, sampling_factor, min_gradient, max_step_size, step_size_decay_factor, armijo_factor)
+
+
+class BoostedTreesClassification(MultiBinaryClassification):
+    """A gradient boosting multinomial classification model using regression decision trees."""
+    def __init__(self, iterations, number_of_processes, max_depth=None, min_observations=2, min_variance=0.,
+                 min_variance_reduction=0., random_feature_selection=False, feature_sample_size_function=math.sqrt,
+                 sampling_factor=1., min_gradient=1e-7, max_step_size=1000., step_size_decay_factor=.7,
+                 armijo_factor=.7):
+        super(BoostedTreesClassification, self)\
+            .__init__(BoostedTreesBinaryClassification(iterations, max_depth, min_observations, min_variance,
+                                                       min_variance_reduction, random_feature_selection,
+                                                       feature_sample_size_function, sampling_factor, min_gradient,
+                                                       max_step_size, step_size_decay_factor, armijo_factor),
+                      number_of_processes)
+
+
+class BoostedTreesRegression(GradientBoostingRegression):
+    """A gradient boosting regression model using regression decision trees."""
+    def __init__(self, iterations, max_depth=None, min_observations=2,
+                 min_variance=0., min_variance_reduction=0., random_feature_selection=False,
+                 feature_sample_size_function=math.sqrt, sampling_factor=1., min_gradient=1e-7, max_step_size=1000.,
+                 step_size_decay_factor=.7, armijo_factor=.7):
+        super(BoostedTreesRegression, self)\
+            .__init__(DecisionTreeRegression(max_depth=max_depth, min_observations=min_observations,
+                                             min_variance=min_variance, min_variance_reduction=min_variance_reduction,
+                                             random_feature_selection=random_feature_selection,
+                                             feature_sample_size_function=feature_sample_size_function),
+                      iterations, sampling_factor, min_gradient, max_step_size, step_size_decay_factor, armijo_factor)
