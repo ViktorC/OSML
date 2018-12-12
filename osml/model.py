@@ -894,6 +894,15 @@ class GradientBoosting(Model):
     def _d_loss_wrt_predictions(self, predictions_sr: pd.Series, labels_sr: pd.Series) -> pd.Series:
         pass
 
+    def _build_model(self, observations_df, labels_sr):
+        model = copy.deepcopy(self.base_model)
+        if self.sampling_factor == 1:
+            model.fit(observations_df, labels_sr)
+        else:
+            observations_sample_df = observations_df.sample(int(len(observations_df.index) * self.sampling_factor))
+            model.fit(observations_sample_df, labels_sr.reindex(observations_sample_df.index))
+        return model
+
     def _line_search(self, base_predictions_sr, gradient_sr, descent_direction_sr, labels_sr):
         # Backtracking line search using the Armijo-Goldstein termination condition.
         base_loss = self._loss(base_predictions_sr, labels_sr)
@@ -910,22 +919,18 @@ class GradientBoosting(Model):
 
     def _fit(self, observations_df, labels_sr):
         self._weighted_models = []
-        # TODO: initial linear estimation.
-        predictions_sr = pd.Series(np.zeros((labels_sr.count(), )))
+        base_model = self._build_model(observations_df, labels_sr.astype(np.float_))
+        base_predictions_sr = base_model.predict(observations_df)
+        self._weighted_models.append((base_model, 1))
         for i in range(self.iterations):
-            gradient_sr = self._d_loss_wrt_predictions(predictions_sr, labels_sr)
+            gradient_sr = self._d_loss_wrt_predictions(base_predictions_sr, labels_sr)
             if np.all(np.absolute(gradient_sr.values) <= self.min_gradient):
                 break
-            model = copy.deepcopy(self.base_model)
-            if self.sampling_factor == 1:
-                model.fit(observations_df, -gradient_sr)
-            else:
-                observations_sample_df = observations_df.sample(int(len(observations_df.index) * self.sampling_factor))
-                model.fit(observations_sample_df, -gradient_sr.reindex(observations_sample_df.index))
+            model = self._build_model(observations_df, -gradient_sr)
             residual_predictions_sr = model.predict(observations_df)
-            weight = self._line_search(predictions_sr, gradient_sr, residual_predictions_sr, labels_sr)
+            weight = self._line_search(base_predictions_sr, gradient_sr, residual_predictions_sr, labels_sr)
             self._weighted_models.append((model, weight))
-            predictions_sr += residual_predictions_sr * weight
+            base_predictions_sr += residual_predictions_sr * weight
 
     def _predict(self, observations_df):
         predictions_sr = pd.Series(np.zeros((len(observations_df.index), )))
