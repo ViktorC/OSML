@@ -16,7 +16,7 @@ import sklearn.tree as skt
     (osmld.ExamDataSet('data/exam/ex4x.dat', 'data/exam/ex4y.dat'), osmlm.LogisticRegression(), 1.),
     (osmld.TitanicDataSet('data/titanic/titanic.csv'), osmlm.LogisticRegression(), .8),
     (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.GradientBoostingRegression(
-        base_model=osmlm.LassoRegression(iterations=100), iterations=10), 38.),
+        base_model=osmlm.LassoRegression(iterations=100), iterations=10), 41.5),
     (osmld.MushroomDataSet('data/mushroom/mushroom.csv'), osmlm.BoostedTreesBinaryClassification(iterations=5), .6)
 ])
 def test_model_loss(data_set, model, max_test_loss):
@@ -46,6 +46,7 @@ def test_model_loss(data_set, model, max_test_loss):
     (osmld.IrisDataSet('data/iris/iris.csv'), osmlm.BaggedTreesClassification(number_of_models=10), .2),
     (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.BaggedTreesRegression(number_of_models=5), 6.4),
     (osmld.IrisDataSet('data/iris/iris.csv'), osmlm.RandomForestClassification(number_of_models=10), .2),
+    (osmld.IMDBDataSet('data/imdb/ratings.csv'), osmlm.RandomForestClassification(number_of_models=16), .8),
     (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.RandomForestRegression(number_of_models=5), 6.2),
     (osmld.IrisDataSet('data/iris/iris.csv'), osmlm.BoostedTreesClassification(iterations=10, number_of_processes=3),
         .2),
@@ -66,9 +67,9 @@ def test_model_accuracy(data_set, model, max_inaccuracy):
     (osmld.IrisDataSet('data/iris/iris.csv'), osmlm.NaiveBayes(), sknb.GaussianNB(), .98, .05),
     (osmld.MushroomDataSet('data/mushroom/mushroom.csv'), osmlm.NaiveBayes(), sknb.MultinomialNB(), .98, .05),
     (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.KNearestNeighborsRegression(),
-        sknn.KNeighborsRegressor(n_neighbors=7, weights='distance'), .9, .05),
+        sknn.KNeighborsRegressor(n_neighbors=7, weights='distance'), .8, .05),
     (osmld.ExamDataSet('data/exam/ex4x.dat', 'data/exam/ex4y.dat'), osmlm.KNearestNeighborsClassification(),
-     sknn.KNeighborsClassifier(n_neighbors=7, weights='distance'), .7, .1),
+     sknn.KNeighborsClassifier(n_neighbors=7, weights='distance'), .6, .15),
     (osmld.IrisDataSet('data/iris/iris.csv'), osmlm.KNearestNeighborsClassification(),
         sknn.KNeighborsClassifier(n_neighbors=7, weights='distance'), .9, .05),
     (osmld.MushroomDataSet('data/mushroom/mushroom.csv'), osmlm.DecisionTreeClassification(),

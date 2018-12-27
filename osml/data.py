@@ -1,3 +1,4 @@
+import datetime as dt
 import numpy as np
 import pandas as pd
 
@@ -201,13 +202,103 @@ class MushroomDataSet(DataSet):
     """The mushrooms data set."""
     def __init__(self, data_path, shuffle_data=True, reset_indices=True, test_share=.3, label_column_idx=0):
         complete_df = pd.read_csv(data_path, index_col=False)
-        complete_df = complete_df.applymap(lambda e: ord(e))
-        complete_df['type'] = complete_df['type'].replace(101, 0)
-        complete_df['type'] = complete_df['type'].replace(112, 1)
+        complete_df = pd.get_dummies(complete_df, columns=complete_df.columns, prefix=complete_df.columns)
+        complete_df = complete_df.drop('type_p', axis=1)
+        complete_df = complete_df.drop('bruises_f', axis=1)
+        complete_df = complete_df.drop('gill_attachment_a', axis=1)
+        complete_df = complete_df.drop('gill_spacing_c', axis=1)
+        complete_df = complete_df.drop('gill_size_b', axis=1)
+        complete_df = complete_df.drop('stalk_shape_e', axis=1)
         labels_sr = pd.Series(complete_df[complete_df.columns[label_column_idx]])
         observations_df = complete_df.drop(complete_df.columns[label_column_idx], axis=1)
         self.training_observations_df, self.test_observations_df, self.training_labels_sr, self.test_labels_sr = \
             split_train_test(observations_df, labels_sr, test_share, shuffle_data, reset_indices)
+
+    def get_training_observations(self):
+        return self.training_observations_df
+
+    def get_test_observations(self):
+        return self.test_observations_df
+
+    def get_training_labels(self):
+        return self.training_labels_sr
+
+    def get_test_labels(self):
+        return self.test_labels_sr
+
+
+class IMDBDataSet(DataSet):
+    """A data set of movie attributes as data points and user ratings as the labels based on an IMDB ratings history."""
+    def __init__(self, data_path, shuffle_data=True, reset_indices=True, test_share=.2, label_column_idx=0,
+                 min_director_occurrences=3, binary=False, positive_rating_cutoff=7):
+        complete_df = pd.read_csv(data_path, encoding='ISO-8859-1')
+        complete_df = complete_df.drop('Const', axis=1)
+        complete_df = complete_df.drop('Date Rated', axis=1)
+        complete_df = complete_df.drop('Title', axis=1)
+        complete_df = complete_df.drop('URL', axis=1)
+        complete_df = complete_df.drop('Year', axis=1)
+        complete_df.dropna(subset=['Release Date'], inplace=True)
+        complete_df['Release Date'] = complete_df['Release Date']\
+            .apply(lambda e: self.calculate_days_since_release(dt.datetime.strptime(e, "%Y-%m-%d")))
+        complete_df.rename(columns={'Release Date': 'Age (days)'}, inplace=True)
+        complete_df['Num Votes'] = complete_df['Num Votes'].astype(np.float_)
+        complete_df['Age (days)'] = complete_df['Age (days)'].astype(np.float_)
+        complete_df = pd.get_dummies(complete_df, columns=["Title Type"], prefix=["Type"])
+        genres_dummies_df = complete_df.pop('Genres').str.get_dummies(sep=', ')
+        genres_dummies_df = genres_dummies_df.add_prefix('Genre_')
+        complete_df = complete_df.join(genres_dummies_df)
+        directors_dummies_df = complete_df.pop('Directors').str.get_dummies(sep=', ')
+        directors_to_drop = [c for c in directors_dummies_df.columns
+                             if directors_dummies_df[c].sum() < min_director_occurrences]
+        directors_dummies_df = directors_dummies_df.drop(directors_to_drop, axis=1)
+        directors_dummies_df = directors_dummies_df.add_prefix('Director_')
+        complete_df = complete_df.join(directors_dummies_df)
+        labels_sr = pd.Series(complete_df[complete_df.columns[label_column_idx]])
+        if binary:
+            labels_sr = labels_sr.apply(lambda e: 1 if e >= positive_rating_cutoff else 0)
+        observations_df = complete_df.drop(complete_df.columns[label_column_idx], axis=1)
+        self.training_observations_df, self.test_observations_df, self.training_labels_sr, self.test_labels_sr = \
+            split_train_test(observations_df, labels_sr, test_share, shuffle_data, reset_indices)
+
+    @staticmethod
+    def calculate_days_since_release(release_date):
+        date_delta = dt.datetime.now() - release_date
+        return max(0, date_delta.days)
+
+    def build_observation(self, imdb_rating, runtime, num_of_votes, release_date, title_type, genres, directors):
+        """Creates a single row data frame out of the observation.
+
+        Args:
+            imdb_rating: The IMDB rating of the title.
+            runtime: The title's runtime in minutes.
+            num_of_votes: The number of ratings the title has on IMDB.
+            release_date: A date object representing the release date of the title.
+            title_type: The type of the title.
+            genres: A string of comma separated genres describing the title.
+            directors: A string of the comma separated full names of the title's directors.
+
+        Returns:
+            A single row observation data frame.
+        """
+        observation_df = pd.DataFrame(index=[0], columns=self.training_observations_df.columns)
+        observation_df = observation_df.fillna(0)
+        float_features = (imdb_rating, runtime, num_of_votes, self.calculate_days_since_release(release_date))
+        for i in range(4):
+            column = observation_df.columns[i]
+            observation_df[column] = observation_df[column].astype(np.float_)
+            observation_df[column][0] = float_features[i]
+        title_type_column = "Type_" + title_type
+        if title_type_column in observation_df.columns:
+            observation_df[title_type_column][0] = 1
+        for genre in genres.split(', '):
+            genre_column = 'Genre_' + genre
+            if genre_column in observation_df.columns:
+                observation_df[genre_column][0] = 1
+        for director in directors.split(', '):
+            director_column = 'Director_' + director
+            if director_column in observation_df.columns:
+                observation_df[director_column][0] = 1
+        return observation_df
 
     def get_training_observations(self):
         return self.training_observations_df

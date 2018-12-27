@@ -38,7 +38,7 @@ class Model:
     def _fit(self, observations_df: pd.DataFrame, labels_sr: pd.Series) -> None:
         pass
 
-    def _predict(self, observations_df: pd.DataFrame) -> pd.Series:
+    def _predict(self, observations_df: pd.DataFrame) -> np.array:
         pass
 
     def _evaluate(self, predictions_sr: pd.Series, labels_sr: pd.Series) -> float:
@@ -80,9 +80,9 @@ class Model:
             the features are not the same as those of the data the model was fit to.
         """
         self._validate_observations(observations_df)
-        predictions = pd.Series(self._predict(observations_df), name=self._label_name, dtype=self._label_type)
-        self._validate_labels(predictions)
-        return predictions
+        predictions_sr = pd.Series(self._predict(observations_df), name=self._label_name, dtype=self._label_type)
+        self._validate_labels(predictions_sr)
+        return predictions_sr
 
     def evaluate(self, predictions_sr, labels_sr):
         """A function for evaluating the accuracy of the model's predictions. It can be either the minimized function
@@ -168,10 +168,32 @@ class BinaryClassificationModel(ClassificationModel):
     def __init__(self):
         super(BinaryClassificationModel, self).__init__()
 
+    def _predict_class_probabilities(self, observations_df: pd.DataFrame) -> np.array:
+        pass
+
     def _validate_labels(self, labels_sr):
         super(BinaryClassificationModel, self)._validate_labels(labels_sr)
         if not _is_categorical(labels_sr.dtype) or any(v != 0 and v != 1 for v in labels_sr.unique()):
             raise ValueError
+
+    def _predict(self, observations_df):
+        return np.rint(self._predict_class_probabilities(observations_df))
+
+    def predict_class_probabilities(self, observations_df):
+        """Predicts the probabilities of the different classes.
+
+        Args:
+            observations_df: A 2D frame of data points where each column is a feature and each row is an observation.
+
+        Returns:
+            A series of values where each row is the predicted class probability of the corresponding observation.
+
+        Raises:
+            ValueError: If the number of observations is 0 or it does not match the number of labels. Or if the types of
+            the features are not the same as those of the data the model was fit to.
+        """
+        self._validate_observations(observations_df)
+        return pd.Series(self._predict_class_probabilities(observations_df), dtype=np.float_)
 
 
 def _bias_trick(observations_df):
@@ -302,8 +324,8 @@ class LogisticRegression(BinaryClassificationModel):
             second_derivative = (observations_trans * (predictions * (1 - predictions))) @ observations
             self._beta = self._beta - np.linalg.inv(second_derivative) @ first_derivative
 
-    def _predict(self, observations_df):
-        return np.rint(_logistic_function(_bias_trick(observations_df) @ self._beta))
+    def _predict_class_probabilities(self, observations_df):
+        return _logistic_function(_bias_trick(observations_df) @ self._beta)
 
     def _test(self, observations_df, labels_sr):
         labels = labels_sr.values
@@ -341,8 +363,8 @@ class NaiveBayes(ClassificationModel):
                 raise ValueError
 
     def _predict(self, observations_df):
-        predictions = []
-        for row in observations_df.itertuples():
+        predictions = np.zeros((len(observations_df.index)), )
+        for i, row in enumerate(observations_df.itertuples()):
             highest_class_probability = -1
             prediction = None
             probability_of_evidence = 1
@@ -357,7 +379,7 @@ class NaiveBayes(ClassificationModel):
                 if class_probability > highest_class_probability:
                     highest_class_probability = class_probability
                     prediction = label_class
-            predictions.append(prediction)
+            predictions[i] = prediction
         return predictions
 
     def _test(self, observations_df, labels_sr):
@@ -507,14 +529,14 @@ class KNearestNeighborsRegression(KNearestNeighbors, RegressionModel):
         RegressionModel.__init__(self)
 
     def _predict(self, observations_df):
-        predictions = []
+        predictions = np.zeros((len(observations_df.index)), )
         for i, row in observations_df.iterrows():
             weighted_labels_sum = 0
             weight_sum = 0
             for key, value in self._select_weighted_nearest_neighbors(row.values).items():
                 weighted_labels_sum += key * value
                 weight_sum += value
-            predictions.append(weighted_labels_sum / weight_sum)
+            predictions[i] = weighted_labels_sum / weight_sum
         return predictions
 
 
@@ -525,11 +547,11 @@ class KNearestNeighborsClassification(KNearestNeighbors, ClassificationModel):
         ClassificationModel.__init__(self)
 
     def _predict(self, observations_df):
-        predictions = []
+        predictions = np.zeros((len(observations_df.index)), )
         for i, row in observations_df.iterrows():
             nearest_neighbors = self._select_weighted_nearest_neighbors(row.values)
             sorted_nearest_neighbors = sorted(nearest_neighbors.items(), key=operator.itemgetter(1), reverse=True)
-            predictions.append(sorted_nearest_neighbors[0][0])
+            predictions[i] = sorted_nearest_neighbors[0][0]
         return predictions
 
 
@@ -650,7 +672,7 @@ class DecisionTree(Model):
         self._root = self._build_tree(observations_df, labels_sr, observations_df.columns.tolist(), 0)
 
     def _predict(self, observations_df):
-        predictions = []
+        predictions = np.zeros((len(observations_df.index)), )
         for i, row in observations_df.iterrows():
             node = self._root
             terminate_early = False
@@ -670,7 +692,7 @@ class DecisionTree(Model):
                         node = node.children_by_feature_value[None]
                 else:
                     raise ValueError
-            predictions.append(node.value)
+            predictions[i] = node.value
         return predictions
 
     def _test(self, observations_df, labels_sr):
@@ -726,6 +748,11 @@ class DecisionTreeRegression(DecisionTree, RegressionModel):
         return labels_sr.mean()
 
 
+class SupportVectorMachine(BinaryClassificationModel):
+    """A support vector machine binary classifier model"""
+    pass
+
+
 class MultiBinaryClassification(ClassificationModel):
     """A meta model that uses multiple binary classifiers for multi-class classification."""
     def __init__(self, base_binary_classifier, number_of_processes=1):
@@ -746,6 +773,10 @@ class MultiBinaryClassification(ClassificationModel):
         classifier.fit(observations_df, binary_labels_sr)
         return classifier
 
+    @staticmethod
+    def _make_class_probability_prediction(binary_classifier, observations_df):
+        return binary_classifier.predict_class_probabilities(observations_df)
+
     def _fit(self, observations_df, labels_sr):
         self._classes = labels_sr.unique()
         base = self.base_binary_classifier
@@ -759,19 +790,17 @@ class MultiBinaryClassification(ClassificationModel):
                                         for c in self._classes]
 
     def _predict(self, observations_df):
-        predictions = []
-        label_sr = pd.Series([1])
-        for i, row in observations_df.iterrows():
-            most_confident_prediction = None
-            lowest_loss = None
-            for j, classifier in enumerate(self._binary_classifiers):
-                loss = classifier.test(pd.DataFrame(index=[0], columns=row.index,
-                                                    data=row.values.reshape(1, len(row.index))), label_sr)
-                if lowest_loss is None or loss < lowest_loss:
-                    lowest_loss = loss
-                    most_confident_prediction = self._classes[j]
-            predictions.append(most_confident_prediction)
-        return predictions
+        if self.number_of_processes > 1:
+            with mp.Pool(min(len(self._classes), self.number_of_processes)) as pool:
+                futures = [pool.apply_async(self._make_class_probability_prediction, args=(c, observations_df))
+                           for c in self._binary_classifiers]
+                class_probability_predictions = [f.get() for f in futures]
+        else:
+            class_probability_predictions = [self._make_class_probability_prediction(c, observations_df)
+                                             for c in self._binary_classifiers]
+        class_probability_predictions_df = pd.concat(class_probability_predictions, axis=1)
+        prediction_class_indices_sr = class_probability_predictions_df.idxmax(axis=1)
+        return prediction_class_indices_sr.apply(lambda e: self._classes[e]).values
 
     def _test(self, observations_df, labels_sr):
         return None
@@ -829,7 +858,8 @@ class BootstrapAggregating(Model):
                            for model in self._models]
                 return self._aggregate_predictions([f.get() for f in futures])
         else:
-            return [self._make_prediction(model, observations_df) for model in self._models]
+            return self._aggregate_predictions([self._make_prediction(model, observations_df)
+                                                for model in self._models])
 
     def _test(self, observations_df, labels_sr):
         return None
@@ -845,7 +875,7 @@ class BootstrapAggregatingClassification(BootstrapAggregating, ClassificationMod
 
     def _aggregate_predictions(self, list_of_predictions_sr):
         return pd.concat(list_of_predictions_sr, axis=1).apply(lambda r: r.value_counts().index[0], axis=1,
-                                                               result_type='reduce')
+                                                               result_type='reduce').values
 
 
 class BootstrapAggregatingRegression(BootstrapAggregating, RegressionModel):
@@ -857,7 +887,7 @@ class BootstrapAggregatingRegression(BootstrapAggregating, RegressionModel):
         RegressionModel.__init__(self)
 
     def _aggregate_predictions(self, list_of_predictions_sr):
-        return pd.concat(list_of_predictions_sr, axis=1).apply(lambda r: r.mean(), axis=1, result_type='reduce')
+        return pd.concat(list_of_predictions_sr, axis=1).apply(lambda r: r.mean(), axis=1, result_type='reduce').values
 
 
 class GradientBoosting(Model):
@@ -888,11 +918,17 @@ class GradientBoosting(Model):
         self.armijo_factor = armijo_factor
         self._weighted_models = None
 
-    def _loss(self, predictions_sr: pd.Series, labels_sr: pd.Series) -> float:
+    def _loss(self, raw_predictions_sr: pd.Series, labels_sr: pd.Series) -> float:
         pass
 
-    def _d_loss_wrt_predictions(self, predictions_sr: pd.Series, labels_sr: pd.Series) -> pd.Series:
+    def _d_loss_wrt_raw_predictions(self, raw_predictions_sr: pd.Series, labels_sr: pd.Series) -> pd.Series:
         pass
+
+    def _raw_predict(self, observations_df):
+        predictions = np.zeros((len(observations_df.index)), )
+        for (model, weight) in self._weighted_models:
+            predictions += model.predict(observations_df).values * weight
+        return predictions
 
     def _build_model(self, observations_df, labels_sr):
         model = copy.deepcopy(self.base_model)
@@ -919,27 +955,19 @@ class GradientBoosting(Model):
 
     def _fit(self, observations_df, labels_sr):
         self._weighted_models = []
-        base_model = self._build_model(observations_df, labels_sr.astype(np.float_))
-        base_predictions_sr = base_model.predict(observations_df)
-        self._weighted_models.append((base_model, 1))
+        predictions_sr = pd.Series(np.zeros((len(observations_df.index), )))
         for i in range(self.iterations):
-            gradient_sr = self._d_loss_wrt_predictions(base_predictions_sr, labels_sr)
+            gradient_sr = self._d_loss_wrt_raw_predictions(predictions_sr, labels_sr)
             if np.all(np.absolute(gradient_sr.values) <= self.min_gradient):
                 break
             model = self._build_model(observations_df, -gradient_sr)
             residual_predictions_sr = model.predict(observations_df)
-            weight = self._line_search(base_predictions_sr, gradient_sr, residual_predictions_sr, labels_sr)
+            weight = self._line_search(predictions_sr, gradient_sr, residual_predictions_sr, labels_sr)
             self._weighted_models.append((model, weight))
-            base_predictions_sr += residual_predictions_sr * weight
-
-    def _predict(self, observations_df):
-        predictions_sr = pd.Series(np.zeros((len(observations_df.index), )))
-        for (model, weight) in self._weighted_models:
-            predictions_sr += model.predict(observations_df) * weight
-        return predictions_sr
+            predictions_sr += residual_predictions_sr * weight
 
     def _test(self, observations_df: pd.DataFrame, labels_sr: pd.Series):
-        return self._loss(GradientBoosting.predict(self, observations_df), labels_sr)
+        return self._loss(pd.Series(self._raw_predict(observations_df)), labels_sr)
 
 
 class GradientBoostingBinaryClassification(GradientBoosting, BinaryClassificationModel):
@@ -950,17 +978,18 @@ class GradientBoostingBinaryClassification(GradientBoosting, BinaryClassificatio
                                   step_size_decay_factor, armijo_factor)
         BinaryClassificationModel.__init__(self)
 
-    def _loss(self, predictions_sr, labels_sr):
+    def _loss(self, raw_predictions_sr, labels_sr):
         # Binary cross entropy loss.
         labels = labels_sr.values
-        squashed_predictions = np.minimum(_logistic_function(predictions_sr.values) + self._epsilon, 1 - self._epsilon)
+        raw_predictions = raw_predictions_sr.values
+        squashed_predictions = np.minimum(_logistic_function(raw_predictions) + self._epsilon, 1 - self._epsilon)
         return (-labels * np.log(squashed_predictions) - (1 - labels) * np.log(1 - squashed_predictions)).mean()
 
-    def _d_loss_wrt_predictions(self, predictions_sr, labels_sr):
-        return pd.Series((_logistic_function(predictions_sr.values) - labels_sr.values) / labels_sr.count())
+    def _d_loss_wrt_raw_predictions(self, raw_predictions_sr, labels_sr):
+        return pd.Series((_logistic_function(raw_predictions_sr.values) - labels_sr.values) / labels_sr.count())
 
-    def _predict(self, observations_df):
-        return pd.Series(np.rint(_logistic_function(GradientBoosting._predict(self, observations_df).values)))
+    def _predict_class_probabilities(self, observations_df):
+        return _logistic_function(self._raw_predict(observations_df))
 
 
 class GradientBoostingRegression(GradientBoosting, RegressionModel):
@@ -971,12 +1000,15 @@ class GradientBoostingRegression(GradientBoosting, RegressionModel):
                                   step_size_decay_factor, armijo_factor)
         RegressionModel.__init__(self)
 
-    def _loss(self, predictions_sr, labels_sr):
+    def _loss(self, raw_predictions_sr, labels_sr):
         # Mean squared error.
-        return np.square(predictions_sr.values - labels_sr.values).mean()
+        return np.square(raw_predictions_sr.values - labels_sr.values).mean()
 
-    def _d_loss_wrt_predictions(self, predictions_sr, labels_sr):
-        return 2 / labels_sr.count() * (predictions_sr - labels_sr)
+    def _d_loss_wrt_raw_predictions(self, raw_predictions_sr, labels_sr):
+        return 2 / labels_sr.count() * (raw_predictions_sr - labels_sr)
+
+    def _predict(self, observations_df):
+        return self._raw_predict(observations_df)
 
 
 class BaggedTreesClassification(BootstrapAggregatingClassification):
