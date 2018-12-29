@@ -4,6 +4,7 @@ import multiprocessing as mp
 import numpy as np
 import operator
 import pandas as pd
+import pickle
 import random
 import typing
 
@@ -123,6 +124,30 @@ class Model:
         """
         self._validate_observations_and_labels(observations_df, labels_sr)
         return self._test(observations_df, labels_sr)
+
+
+def save(model, file_path):
+    """It serializes the model into a binary format and writes it to the specified file path.
+
+    Args:
+        model: The model to serialize.
+        file_path: The path to the file to which the serialized model is to be written.
+    """
+    with open(file_path, mode='wb') as file:
+        pickle.dump(model, file)
+
+
+def load(file_path):
+    """It reads a binary file and deserializes a model from its contents.
+
+    Args:
+        file_path: The path to the file containing the serialized model.
+
+    Returns:
+        The saved machine learning model.
+    """
+    with open(file_path, mode='rb') as file:
+        return pickle.load(file)
 
 
 def _is_continuous(data_type):
@@ -446,10 +471,9 @@ class NaiveBayes(ClassificationModel):
         @staticmethod
         def calculate_probability(value, value_counts, total_value_count, laplace_smoothing):
             # Laplace smoothed probability mass function.
+            value_count = laplace_smoothing
             if value in value_counts.index:
-                value_count = value_counts[value] + laplace_smoothing
-            else:
-                value_count = laplace_smoothing
+                value_count += value_counts[value]
             return float(value_count) / (total_value_count + value_counts.count() * laplace_smoothing)
 
         def get_probability(self, value):
@@ -555,6 +579,10 @@ class KNearestNeighborsClassification(KNearestNeighbors, ClassificationModel):
         return predictions
 
 
+def _identity_function(x):
+    return x
+
+
 class DecisionTree(Model):
     """An abstract decision tree base class."""
     def __init__(self, max_depth, min_observations, min_impurity, min_impurity_reduction, random_feature_selection,
@@ -568,7 +596,7 @@ class DecisionTree(Model):
         self.min_impurity_reduction = min_impurity_reduction if min_impurity_reduction is not None else float('-inf')
         self.random_feature_selection = random_feature_selection
         self.feature_sample_size_function = feature_sample_size_function if feature_sample_size_function is not None \
-            else lambda n: n
+            else _identity_function
         self._root = None
 
     def _setup(self, labels_sr: pd.Series) -> None:
@@ -818,7 +846,7 @@ class BootstrapAggregating(Model):
         super(BootstrapAggregating, self).__init__()
         self.base_model = base_model
         self.number_of_models = number_of_models
-        self.sample_size_function = sample_size_function if sample_size_function is not None else lambda n: n
+        self.sample_size_function = sample_size_function if sample_size_function is not None else _identity_function
         self.number_of_processes = min(number_of_models, number_of_processes)
         self._models = None
 

@@ -76,7 +76,7 @@ def split_train_test(observations_df, labels_sr, test_share, shuffle_data, reset
     Raises:
         ValueError: If the test share is not greater than 0 or not less than 1.
     """
-    if test_share <= 0 or test_share >= 1:
+    if test_share < 0 or test_share > 1:
         raise ValueError
     if shuffle_data:
         shuffle(observations_df, labels_sr)
@@ -99,7 +99,7 @@ class BostonDataSet(DataSet):
     def __init__(self, data_path, shuffle_data=True, reset_indices=True, test_share=.3, label_column_idx=13):
         complete_df = pd.read_csv(data_path, index_col=False)
         complete_df = complete_df.astype(np.float_)
-        complete_df['chas'] = complete_df['chas'].astype(np.int_)
+        complete_df['chas'] = complete_df['chas'].astype(np.byte)
         labels_sr = pd.Series(complete_df[complete_df.columns[label_column_idx]])
         observations_df = complete_df.drop(complete_df.columns[label_column_idx], axis=1)
         self.training_observations_df, self.test_observations_df, self.training_labels_sr, self.test_labels_sr =\
@@ -125,7 +125,7 @@ class ExamDataSet(DataSet):
     """
     def __init__(self, obs_path, label_path, shuffle_data=True, reset_indices=True, test_share=.3):
         observations_df = pd.DataFrame(np.loadtxt(obs_path))
-        labels_sr = pd.Series(np.loadtxt(label_path), dtype=np.int_)
+        labels_sr = pd.Series(np.loadtxt(label_path), dtype=np.byte)
         self.training_observations_df, self.test_observations_df, self.training_labels_sr, self.test_labels_sr = \
             split_train_test(observations_df, labels_sr, test_share, shuffle_data, reset_indices)
 
@@ -175,7 +175,7 @@ class TitanicDataSet(DataSet):
         complete_df = complete_df.drop('Name', axis=1)
         complete_df['Sex'] = complete_df['Sex'].replace('male', 0)
         complete_df['Sex'] = complete_df['Sex'].replace('female', 1)
-        complete_df['Sex'] = complete_df['Sex'].astype(np.int_)
+        complete_df['Sex'] = complete_df['Sex'].astype(np.byte)
         complete_df['Pclass'] = complete_df['Pclass'].astype(np.int_)
         complete_df['Age'] = complete_df['Age'].astype(np.float_)
         complete_df['Siblings/Spouses Aboard'] = complete_df['Siblings/Spouses Aboard'].astype(np.float_)
@@ -202,7 +202,8 @@ class MushroomDataSet(DataSet):
     """The mushrooms data set."""
     def __init__(self, data_path, shuffle_data=True, reset_indices=True, test_share=.3, label_column_idx=0):
         complete_df = pd.read_csv(data_path, index_col=False)
-        complete_df = pd.get_dummies(complete_df, columns=complete_df.columns, prefix=complete_df.columns)
+        complete_df = pd.get_dummies(complete_df, columns=complete_df.columns, prefix=complete_df.columns,
+                                     dtype=np.byte)
         complete_df = complete_df.drop('type_p', axis=1)
         complete_df = complete_df.drop('bruises_f', axis=1)
         complete_df = complete_df.drop('gill_attachment_a', axis=1)
@@ -230,7 +231,7 @@ class MushroomDataSet(DataSet):
 class IMDBDataSet(DataSet):
     """A data set of movie attributes as data points and user ratings as the labels based on an IMDB ratings history."""
     def __init__(self, data_path, shuffle_data=True, reset_indices=True, test_share=.2, label_column_idx=0,
-                 min_director_occurrences=3, binary=False, positive_rating_cutoff=7):
+                 min_director_occurrences=2, binary=False, positive_rating_cutoff=7):
         complete_df = pd.read_csv(data_path, encoding='ISO-8859-1')
         complete_df = complete_df.drop('Const', axis=1)
         complete_df = complete_df.drop('Date Rated', axis=1)
@@ -243,15 +244,17 @@ class IMDBDataSet(DataSet):
         complete_df.rename(columns={'Release Date': 'Age (days)'}, inplace=True)
         complete_df['Num Votes'] = complete_df['Num Votes'].astype(np.float_)
         complete_df['Age (days)'] = complete_df['Age (days)'].astype(np.float_)
-        complete_df = pd.get_dummies(complete_df, columns=["Title Type"], prefix=["Type"])
+        complete_df = pd.get_dummies(complete_df, columns=["Title Type"], prefix=["Type"], dtype=np.byte)
         genres_dummies_df = complete_df.pop('Genres').str.get_dummies(sep=', ')
         genres_dummies_df = genres_dummies_df.add_prefix('Genre_')
+        genres_dummies_df = genres_dummies_df.astype(np.byte)
         complete_df = complete_df.join(genres_dummies_df)
         directors_dummies_df = complete_df.pop('Directors').str.get_dummies(sep=', ')
         directors_to_drop = [c for c in directors_dummies_df.columns
                              if directors_dummies_df[c].sum() < min_director_occurrences]
         directors_dummies_df = directors_dummies_df.drop(directors_to_drop, axis=1)
         directors_dummies_df = directors_dummies_df.add_prefix('Director_')
+        directors_dummies_df = directors_dummies_df.astype(np.byte)
         complete_df = complete_df.join(directors_dummies_df)
         labels_sr = pd.Series(complete_df[complete_df.columns[label_column_idx]])
         if binary:
@@ -282,22 +285,23 @@ class IMDBDataSet(DataSet):
         """
         observation_df = pd.DataFrame(index=[0], columns=self.training_observations_df.columns)
         observation_df = observation_df.fillna(0)
+        observation_df = observation_df.astype(np.byte)
         float_features = (imdb_rating, runtime, num_of_votes, self.calculate_days_since_release(release_date))
         for i in range(4):
             column = observation_df.columns[i]
             observation_df[column] = observation_df[column].astype(np.float_)
-            observation_df[column][0] = float_features[i]
+            observation_df.at[0, column] = float_features[i]
         title_type_column = "Type_" + title_type
         if title_type_column in observation_df.columns:
-            observation_df[title_type_column][0] = 1
+            observation_df.at[0, title_type_column] = 1
         for genre in genres.split(', '):
             genre_column = 'Genre_' + genre
             if genre_column in observation_df.columns:
-                observation_df[genre_column][0] = 1
+                observation_df.at[0, genre_column] = 1
         for director in directors.split(', '):
             director_column = 'Director_' + director
             if director_column in observation_df.columns:
-                observation_df[director_column][0] = 1
+                observation_df.at[0, director_column] = 1
         return observation_df
 
     def get_training_observations(self):
