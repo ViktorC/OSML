@@ -279,11 +279,9 @@ class IMDBDataSet(DataSet):
         complete_df.dropna(inplace=True)
         complete_df['Release Date'] = complete_df['Release Date']\
             .apply(lambda e: self.calculate_days_since_release(dt.datetime.strptime(e, "%Y-%m-%d")))
-        complete_df.rename(columns={'Release Date': 'Age (decades)', 'Num Votes': 'Votes (100k)',
-                                    'Runtime (mins)': 'Runtime (hours)'}, inplace=True)
-        complete_df['Age (decades)'] = complete_df['Age (decades)'].astype(np.float_) / 3650.
-        complete_df['Votes (100k)'] = complete_df['Votes (100k)'].astype(np.float_) / 100000.
-        complete_df['Runtime (hours)'] = complete_df['Runtime (hours)'].astype(np.float_) / 60.
+        complete_df.rename(columns={'Release Date': 'Age (years)', 'Num Votes': 'Votes (1k)'}, inplace=True)
+        complete_df['Age (years)'] = complete_df['Age (years)'].astype(np.float_) / 365.
+        complete_df['Votes (1k)'] = complete_df['Votes (1k)'].astype(np.float_) / 1000.
         complete_df = pd.get_dummies(complete_df, columns=["Title Type"], prefix=["Type"], dtype=np.byte)
         genres_dummies_df = complete_df.pop('Genres').str.get_dummies(sep=', ')
         genres_dummies_df = genres_dummies_df.add_prefix('Genre_')

@@ -86,8 +86,7 @@ class Model:
         return predictions_sr
 
     def evaluate(self, predictions_sr, labels_sr):
-        """A function for evaluating the accuracy of the model's predictions. It can be either the minimized function
-        or some other metric of the model's explanatory power based on its predictions.
+        """A function for evaluating the model's predictions according to some arbitrary metric.
 
         Args:
             predictions_sr: A series of predictions.
@@ -95,8 +94,8 @@ class Model:
             series of predictions.
 
         Returns:
-            A non-standardized numeric measure of prediction error. It is not comparable across different model types.
-            The more accurate the predictions, the smaller this value.
+            A non-standardized numeric measure of the explanatory power of the predictions. It is not comparable across
+            different model types (i.e. regression, classification, and binary classification).
 
         Raises:
             ValueError: If the predictions or labels are empty or do not match in length or do not have the expected
@@ -171,7 +170,7 @@ class RegressionModel(Model):
             raise ValueError
 
     def _evaluate(self, predictions_sr, labels_sr):
-        # The root mean squared error.
+        # Root mean squared error.
         return np.sqrt(np.square(predictions_sr.values - labels_sr.values).mean())
 
 
@@ -186,16 +185,16 @@ class ClassificationModel(Model):
             raise ValueError
 
     def _evaluate(self, predictions_sr, labels_sr):
-        # The number of incorrect predictions per the total number of predictions.
-        return len([p for i, p in predictions_sr.iteritems() if p != labels_sr[i]]) / predictions_sr.count()
+        # Accuracy.
+        return len([p for i, p in predictions_sr.iteritems() if p == labels_sr[i]]) / predictions_sr.count()
 
 
-class BinaryClassificationModel(ClassificationModel):
+class BinaryClassificationModel(Model):
     """An abstract base class for binary classification models."""
     def __init__(self):
         super(BinaryClassificationModel, self).__init__()
 
-    def _predict_class_probabilities(self, observations_df: pd.DataFrame) -> np.array:
+    def _predict_probabilities(self, observations_df: pd.DataFrame) -> np.array:
         pass
 
     def _validate_labels(self, labels_sr):
@@ -204,10 +203,16 @@ class BinaryClassificationModel(ClassificationModel):
             raise ValueError
 
     def _predict(self, observations_df):
-        return np.rint(self._predict_class_probabilities(observations_df))
+        return np.rint(self._predict_probabilities(observations_df))
 
-    def predict_class_probabilities(self, observations_df):
-        """Predicts the probabilities of the different classes.
+    def _evaluate(self, predictions_sr, labels_sr):
+        # F1 score.
+        precision = self.evaluate_precision(predictions_sr, labels_sr)
+        recall = self.evaluate_recall(predictions_sr, labels_sr)
+        return 2 * precision * recall / (precision + recall)
+
+    def predict_probabilities(self, observations_df):
+        """Predicts the probabilities of the observations belonging to the positive class.
 
         Args:
             observations_df: A 2D frame of data points where each column is a feature and each row is an observation.
@@ -220,7 +225,7 @@ class BinaryClassificationModel(ClassificationModel):
             the features are not the same as those of the data the model was fit to.
         """
         self._validate_observations(observations_df)
-        return pd.Series(self._predict_class_probabilities(observations_df), dtype=np.float_)
+        return pd.Series(self._predict_probabilities(observations_df), dtype=np.float_)
 
     def evaluate_precision(self, predictions_sr, labels_sr):
         """Evaluates the precision of the predictions (true positive predictions / all positive predictions).
@@ -299,10 +304,10 @@ class LinearRegression(RegressionModel):
         return np.square(self._predict(observations_df) - labels_sr.values).mean()
 
 
-class RidgeRegression(LinearRegression):
+class LinearRidgeRegression(LinearRegression):
     """A linear ridge regression model fitted using ordinary least squares."""
     def __init__(self, alpha=1e-2):
-        super(RidgeRegression, self).__init__()
+        super(LinearRidgeRegression, self).__init__()
         if alpha is None or alpha < 0:
             raise ValueError
         self.alpha = alpha
@@ -318,10 +323,10 @@ class RidgeRegression(LinearRegression):
                self.alpha * np.square(self._beta).sum()
 
 
-class LassoRegression(LinearRegression):
+class LinearLassoRegression(LinearRegression):
     """A Least Absolute Shrinkage and Selection Operator regression model fitted using coordinate descent."""
     def __init__(self, alpha=1e-2, iterations=100):
-        super(LassoRegression, self).__init__()
+        super(LinearLassoRegression, self).__init__()
         if alpha is None or alpha < 0:
             raise ValueError
         if iterations is None or iterations <= 0:
@@ -382,6 +387,12 @@ class LogisticRegression(BinaryClassificationModel):
         self.min_gradient = min_gradient
         self._beta = None
 
+    def _gradient(self, observations_trans, predictions, labels):
+        return observations_trans @ (predictions - labels)
+
+    def _hessian(self, observations, observations_trans, predictions):
+        return (observations_trans * (predictions * (1 - predictions))) @ observations
+
     def _fit(self, observations_df, labels_sr):
         # Use Newton's method to numerically approximate the root of the log likelihood function's derivative.
         observations = _bias_trick(observations_df)
@@ -389,15 +400,16 @@ class LogisticRegression(BinaryClassificationModel):
         labels = labels_sr.values
         self._beta = np.zeros(observations.shape[1], )
         for i in range(self.iterations):
+            print(i)
             predictions = _logistic_function(observations @ self._beta)
-            first_derivative = observations_trans @ (predictions - labels)
+            first_derivative = self._gradient(observations_trans, predictions, labels)
             if np.all(np.absolute(first_derivative) <= self.min_gradient):
                 break
             # If the number of parameters is N, the Hessian will take the shape of an N by N matrix.
-            second_derivative = (observations_trans * (predictions * (1 - predictions))) @ observations
+            second_derivative = self._hessian(observations, observations_trans, predictions)
             self._beta = self._beta - np.linalg.inv(second_derivative) @ first_derivative
 
-    def _predict_class_probabilities(self, observations_df):
+    def _predict_probabilities(self, observations_df):
         return _logistic_function(_bias_trick(observations_df) @ self._beta)
 
     def _test(self, observations_df, labels_sr):
@@ -407,8 +419,27 @@ class LogisticRegression(BinaryClassificationModel):
         return -((np.log(predictions) * labels + np.log(1 - predictions) * (1 - labels)).mean())
 
 
+class LogisticRidgeRegression(LogisticRegression):
+    """A logistic regression model with L2 regularization."""
+    def __init__(self, iterations=100, min_gradient=1e-7, alpha=1e-2):
+        super(LogisticRidgeRegression, self).__init__(iterations, min_gradient)
+        if alpha is None or alpha < 0:
+            raise ValueError
+        self.alpha = alpha
+
+    def _gradient(self, observations_trans, predictions, labels):
+        return observations_trans @ (predictions - labels) + self.alpha / 2 * self._beta
+
+    def _hessian(self, observations, observations_trans, predictions):
+        return ((observations_trans * (predictions * (1 - predictions))) @ observations) + self.alpha / 2
+
+    def _test(self, observations_df, labels_sr):
+        return super(LogisticRidgeRegression, self)._test(observations_df, labels_sr) + \
+               self.alpha * np.square(self._beta).sum()
+
+
 class NaiveBayes(ClassificationModel):
-    """A naive Bayes multinomial classification model."""
+    """A naive Bayes multi-nomial classification model."""
     def __init__(self, laplace_smoothing=1.):
         super(NaiveBayes, self).__init__()
         if laplace_smoothing is None or laplace_smoothing < 0:
@@ -851,7 +882,7 @@ class MultiBinaryClassification(ClassificationModel):
 
     @staticmethod
     def _make_class_probability_prediction(binary_classifier, observations_df):
-        return binary_classifier.predict_class_probabilities(observations_df)
+        return binary_classifier.predict_probabilities(observations_df)
 
     def _fit(self, observations_df, labels_sr):
         self._classes = labels_sr.unique()
@@ -1064,7 +1095,7 @@ class GradientBoostingBinaryClassification(GradientBoosting, BinaryClassificatio
     def _d_loss_wrt_raw_predictions(self, raw_predictions_sr, labels_sr):
         return pd.Series((_logistic_function(raw_predictions_sr.values) - labels_sr.values) / labels_sr.count())
 
-    def _predict_class_probabilities(self, observations_df):
+    def _predict_probabilities(self, observations_df):
         return _logistic_function(self._raw_predict(observations_df))
 
 
