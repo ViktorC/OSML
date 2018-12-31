@@ -11,38 +11,38 @@ A simple Python library of 'old school' machine learning algorithms such as line
 | Mushroom | BC                 | BC            |
 | IMDb     | CT                 | CN, BC        |
 
-CN = Continuous
-CT = Categorical
-BC = Binary Categorical
-OC = Ordinal Categorical
-NC = Nominal Categorical
+CN = Continuous  
+CT = Categorical  
+BC = Binary Categorical  
+OC = Ordinal Categorical  
+NC = Nominal Categorical  
 
 ## Models
-| Model                                | Prediction Type | Supported Feature Types | Meta   | Optimization Method |
-| ------------------------------------ | --------------- | ----------------------- | ------ | ------------------- |
-| LinearRegression                     | CN              | CN, BC, OC              | - [ ]  | Analytic            |
-| LinearRidgeRegression                | CN              | CN, BC, OC              | - [ ]  | Analytic            |
-| LinearLassoRegression                | CN              | CN, BC, OC              | - [ ]  | Coordinate Descent  |
-| LogisticRegression                   | BC              | CN, BC, OC              | - [ ]  | Newton-Raphson      |
-| LogisticRidgeRegression              | BC              | CN, BC, OC              | - [ ]  | Newton-Raphson      |
-| NaiveBayes                           | CT              | CN, BC, OC, NC          | - [ ]  | -                   |
-| KNearestNeighborsRegression          | CN              | CN, BC, OC              | - [ ]  | -                   |
-| KNearestNeighborsClassification      | CT              | CN, BC, OC              | - [ ]  | -                   |
-| DecisionTreeRegression               | CN              | CN, BC, OC, NC          | - [ ]  | -                   |
-| DecisionTreeClassification           | CT              | CN, BC, OC, NC          | - [ ]  | -                   |
-| BaggedTreesRegression                | CN              | CN, BC, OC, NC          | - [ ]  | -                   |
-| BaggedTreesClassification            | CT              | CN, BC, OC, NC          | - [ ]  | -                   |
-| RandomForestRegression               | CN              | CN, BC, OC, NC          | - [ ]  | -                   |
-| RandomForestClassification           | CT              | CN, BC, OC, NC          | - [ ]  | -                   |
-| BoostedTreesRegression               | CN              | CN, BC, OC, NC          | - [ ]  | Gradient Descent    |
-| BoostedTreesBinaryClassification     | BC              | CN, BC, OC, NC          | - [ ]  | Gradient Descent    |
-| BoostedTreesClassification           | CT              | CN, BC, OC, NC          | - [ ]  | Gradient Descent    |
-| MultiBinaryClassification            | CT              | -                       | - [x]  | -                   |
-| BootstrappingRegression              | CN              | -                       | - [x]  | -                   |
-| BootstrappingClassification          | CT              | -                       | - [x]  | -                   |
-| GradientBoostingRegression           | CN              | -                       | - [x]  | Gradient Descent    |
-| GradientBoostingBinaryClassification | BC              | -                       | - [x]  | Gradient Descent    |
-| GradientBoostingClassification       | CT              | -                       | - [x]  | Gradient Descent    |
+| Model                                | Prediction Type | Supported Feature Types | Optimization Method |
+| ------------------------------------ | --------------- | ----------------------- | ------------------- |
+| LinearRegression                     | CN              | CN, BC, OC              | Analytic            |
+| LinearRidgeRegression                | CN              | CN, BC, OC              | Analytic            |
+| LinearLassoRegression                | CN              | CN, BC, OC              | Coordinate Descent  |
+| LogisticRegression                   | BC              | CN, BC, OC              | Newton-Raphson      |
+| LogisticRidgeRegression              | BC              | CN, BC, OC              | Newton-Raphson      |
+| NaiveBayes                           | CT              | CN, BC, OC, NC          | -                   |
+| KNearestNeighborsRegression          | CN              | CN, BC, OC              | -                   |
+| KNearestNeighborsClassification      | CT              | CN, BC, OC              | -                   |
+| DecisionTreeRegression               | CN              | CN, BC, OC, NC          | -                   |
+| DecisionTreeClassification           | CT              | CN, BC, OC, NC          | -                   |
+| BaggedTreesRegression                | CN              | CN, BC, OC, NC          | -                   |
+| BaggedTreesClassification            | CT              | CN, BC, OC, NC          | -                   |
+| RandomForestRegression               | CN              | CN, BC, OC, NC          | -                   |
+| RandomForestClassification           | CT              | CN, BC, OC, NC          | -                   |
+| BoostedTreesRegression               | CN              | CN, BC, OC, NC          | Gradient Descent    |
+| BoostedTreesBinaryClassification     | BC              | CN, BC, OC, NC          | Gradient Descent    |
+| BoostedTreesClassification           | CT              | CN, BC, OC, NC          | Gradient Descent    |
+| MultiBinaryClassification            | CT              | -                       | -                   |
+| BootstrappingRegression              | CN              | -                       | -                   |
+| BootstrappingClassification          | CT              | -                       | -                   |
+| GradientBoostingRegression           | CN              | -                       | Gradient Descent    |
+| GradientBoostingBinaryClassification | BC              | -                       | Gradient Descent    |
+| GradientBoostingClassification       | CT              | -                       | Gradient Descent    |
 
 ## Usage
 The library has an API similar to that of sklearn. Data sets generally contain four collections of data; a training data frame, a series of training labels, a test data frame, and a series of test labels. Each model has a `fit` function that takes a data frame of observations and a series of labels as its arguments. The `predict` function can be used on fitted models to make predictions about the labels of a data frame of observations. All models have an `evaluate` function as well that measures the fit of a series of predictions to a series of labels based on some metric. This metric is the root mean squared error for regression models, accuracy for classification models, and the F1 score for binary classification models. Finally, models that optimize a loss function also have a `test` method that measures the error of the predictions of the model according to the loss function.
