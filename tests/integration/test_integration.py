@@ -78,7 +78,7 @@ def test_binary_classification_f1_score(data_set, model, min_f1_score):
 
 @pytest.mark.parametrize('data_set,model,sk_model,max_error_compared_to_sk,min_abs_error_diff', [
     (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.LinearRegression(), sklm.LinearRegression(), 1.02, .1),
-    (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.LinearRidgeRegression(), sklm.Ridge(), 1.02, .1),
+    (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.LinearRidgeRegression(), sklm.Ridge(), 1.05, .1),
     (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.LinearLassoRegression(), sklm.Lasso(), 1.12, .15),
     (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.KNearestNeighborsRegression(),
         sknn.KNeighborsRegressor(n_neighbors=7, weights='distance'), 1.25, .1),
