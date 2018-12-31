@@ -44,12 +44,6 @@ NC = Nominal Categorical
 | GradientBoostingBinaryClassification | BC              | -                       | Gradient Descent with Backtracking Line Search | :heavy_check_mark:       |
 | GradientBoostingClassification       | CT              | -                       | Gradient Descent with Backtracking Line Search | :heavy_check_mark:       |
 
-CN = Continuous  
-CT = Categorical  
-BC = Binary Categorical  
-OC = Ordinal Categorical  
-NC = Nominal Categorical  
-
 ## Usage
 The library has an API similar to that of sklearn. Data sets generally contain four collections of data; a training data frame, a series of training labels, a test data frame, and a series of test labels. Each model has a `fit` function that takes a data frame of observations and a series of labels as its arguments. The `predict` function can be used on fitted models to make predictions about the labels of a data frame of observations. All models have an `evaluate` function as well that measures the fit of a series of predictions to a series of labels based on some metric. This metric is the root mean squared error for regression models, accuracy for classification models, and the F1 score for binary classification models. Finally, models that optimize a loss function also have a `test` method that measures the error of the predictions of the model according to the loss function.
 
