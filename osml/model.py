@@ -91,17 +91,19 @@ class Model:
 
         Args:
             predictions_sr: A series of predictions.
-            labels_sr: A series of target values where each element is the label of the corresponding row in the data
-            frame of observations.
+            labels_sr: A series of target values where each element is the label of the corresponding element in the
+            series of predictions.
 
         Returns:
             A non-standardized numeric measure of prediction error. It is not comparable across different model types.
             The more accurate the predictions, the smaller this value.
 
         Raises:
-            ValueError: If the number of observations is 0 or it does not match the number of labels. Or if the types of
-            the features or the labels are not the same as those of the data the model was fit to.
+            ValueError: If the predictions or labels are empty or do not match in length or do not have the expected
+            data type.
         """
+        if predictions_sr.count() != labels_sr.count():
+            raise ValueError
         self._validate_labels(predictions_sr)
         self._validate_labels(labels_sr)
         return self._evaluate(predictions_sr, labels_sr)
@@ -219,6 +221,52 @@ class BinaryClassificationModel(ClassificationModel):
         """
         self._validate_observations(observations_df)
         return pd.Series(self._predict_class_probabilities(observations_df), dtype=np.float_)
+
+    def evaluate_precision(self, predictions_sr, labels_sr):
+        """Evaluates the precision of the predictions (true positive predictions / all positive predictions).
+
+        Args:
+            predictions_sr: A series of predictions.
+            labels_sr: A series of target values where each element is the label of the corresponding element in the
+            series of predictions.
+
+        Returns:
+            A scalar measure of the predictions' precision.
+
+        Raises:
+            ValueError: If the predictions or labels are empty or do not match in length or do not have the expected
+            data type.
+        """
+        if predictions_sr.count() != labels_sr.count():
+            raise ValueError
+        self._validate_labels(predictions_sr)
+        self._validate_labels(labels_sr)
+        n_pos_predictions = predictions_sr.sum()
+        n_true_pos_predictions = labels_sr[predictions_sr == 1].sum()
+        return float(n_true_pos_predictions) / n_pos_predictions
+
+    def evaluate_recall(self, predictions_sr, labels_sr):
+        """Evaluates the recall of the predictions (true positive predictions / all positives).
+
+        Args:
+            predictions_sr: A series of predictions.
+            labels_sr: A series of target values where each element is the label of the corresponding element in the
+            series of predictions.
+
+        Returns:
+            A scalar measure of the predictions' recall.
+
+        Raises:
+            ValueError: If the predictions or labels are empty or do not match in length or do not have the expected
+            data type.
+        """
+        if predictions_sr.count() != labels_sr.count():
+            raise ValueError
+        self._validate_labels(predictions_sr)
+        self._validate_labels(labels_sr)
+        n_pos_labels = labels_sr.sum()
+        n_true_pos_predictions = predictions_sr[labels_sr == 1].sum()
+        return float(n_true_pos_predictions) / n_pos_labels
 
 
 def _bias_trick(observations_df):

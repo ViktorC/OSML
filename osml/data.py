@@ -94,6 +94,44 @@ def split_train_test(observations_df, labels_sr, test_share, shuffle_data, reset
     return training_observations_df, test_observations_df, training_labels_sr, test_labels_sr
 
 
+def oversample(observations_df, labels_sr, shuffle_data=True):
+    """Over-samples the data set to address class imbalance. It repeats rows of the data set until all classes are
+    featured as many times as the originally most frequent class.
+
+    Args:
+        observations_df: A 2D frame of data points where each column is a feature and each row is an observation.
+        labels_sr: A series of target values where each element is the label of the corresponding row in the data
+        frame of observations.
+        shuffle_data: Whether the observation-label pairs are to be randomly shuffled.
+
+    Return:
+        The observations data frame and the labels series.
+    """
+    oversampled_observations_df = None
+    oversampled_labels_sr = None
+    highest_count = None
+    label_value_counts_sr = labels_sr.value_counts()
+    for i, count in enumerate(label_value_counts_sr):
+        indices = labels_sr[labels_sr == label_value_counts_sr.index[i]].index
+        class_labels_sr = labels_sr.reindex(indices).reset_index(drop=True)
+        class_observations_df = observations_df.reindex(indices).reset_index(drop=True)
+        if not highest_count:
+            highest_count = count
+            oversampled_labels_sr = class_labels_sr
+            oversampled_observations_df = class_observations_df
+        else:
+            diff = highest_count
+            while diff > 0:
+                batch = min(count, diff)
+                oversampled_labels_sr = oversampled_labels_sr.append(class_labels_sr[:batch]).reset_index(drop=True)
+                oversampled_observations_df = oversampled_observations_df.append(class_observations_df.head(batch))\
+                    .reset_index(drop=True)
+                diff -= batch
+    if shuffle_data:
+        shuffle(oversampled_observations_df, oversampled_labels_sr)
+    return oversampled_observations_df, oversampled_labels_sr
+
+
 class BostonDataSet(DataSet):
     """The Boston house pricing data set."""
     def __init__(self, data_path, shuffle_data=True, reset_indices=True, test_share=.3, label_column_idx=13):
@@ -230,20 +268,22 @@ class MushroomDataSet(DataSet):
 
 class IMDBDataSet(DataSet):
     """A data set of movie attributes as data points and user ratings as the labels based on an IMDB ratings history."""
-    def __init__(self, data_path, shuffle_data=True, reset_indices=True, test_share=.2, label_column_idx=0,
-                 min_director_occurrences=2, binary=False, positive_rating_cutoff=7):
+    def __init__(self, data_path, shuffle_data=True, reset_indices=True, oversample_training_data=True,
+                 test_share=.2, label_column_idx=0, min_director_occurrences=2, binary=False, positive_rating_cutoff=7):
         complete_df = pd.read_csv(data_path, encoding='ISO-8859-1')
         complete_df = complete_df.drop('Const', axis=1)
         complete_df = complete_df.drop('Date Rated', axis=1)
         complete_df = complete_df.drop('Title', axis=1)
         complete_df = complete_df.drop('URL', axis=1)
         complete_df = complete_df.drop('Year', axis=1)
-        complete_df.dropna(subset=['Release Date'], inplace=True)
+        complete_df.dropna(inplace=True)
         complete_df['Release Date'] = complete_df['Release Date']\
             .apply(lambda e: self.calculate_days_since_release(dt.datetime.strptime(e, "%Y-%m-%d")))
-        complete_df.rename(columns={'Release Date': 'Age (days)'}, inplace=True)
-        complete_df['Num Votes'] = complete_df['Num Votes'].astype(np.float_)
-        complete_df['Age (days)'] = complete_df['Age (days)'].astype(np.float_)
+        complete_df.rename(columns={'Release Date': 'Age (decades)', 'Num Votes': 'Votes (100k)',
+                                    'Runtime (mins)': 'Runtime (hours)'}, inplace=True)
+        complete_df['Age (decades)'] = complete_df['Age (decades)'].astype(np.float_) / 3650.
+        complete_df['Votes (100k)'] = complete_df['Votes (100k)'].astype(np.float_) / 100000.
+        complete_df['Runtime (hours)'] = complete_df['Runtime (hours)'].astype(np.float_) / 60.
         complete_df = pd.get_dummies(complete_df, columns=["Title Type"], prefix=["Type"], dtype=np.byte)
         genres_dummies_df = complete_df.pop('Genres').str.get_dummies(sep=', ')
         genres_dummies_df = genres_dummies_df.add_prefix('Genre_')
@@ -262,6 +302,9 @@ class IMDBDataSet(DataSet):
         observations_df = complete_df.drop(complete_df.columns[label_column_idx], axis=1)
         self.training_observations_df, self.test_observations_df, self.training_labels_sr, self.test_labels_sr = \
             split_train_test(observations_df, labels_sr, test_share, shuffle_data, reset_indices)
+        if oversample_training_data:
+            self.training_observations_df, self.training_labels_sr = oversample(self.training_observations_df,
+                                                                                self.training_labels_sr)
 
     @staticmethod
     def calculate_days_since_release(release_date):
@@ -286,7 +329,8 @@ class IMDBDataSet(DataSet):
         observation_df = pd.DataFrame(index=[0], columns=self.training_observations_df.columns)
         observation_df = observation_df.fillna(0)
         observation_df = observation_df.astype(np.byte)
-        float_features = (imdb_rating, runtime, num_of_votes, self.calculate_days_since_release(release_date))
+        float_features = (imdb_rating, float(runtime) / 60., float(num_of_votes) / 100000.,
+                          float(self.calculate_days_since_release(release_date)) / 3650.)
         for i in range(4):
             column = observation_df.columns[i]
             observation_df[column] = observation_df[column].astype(np.float_)
