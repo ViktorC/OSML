@@ -47,9 +47,8 @@ Binary classifiers predict binary dependent variables. The only two values the p
 | BaggedTrees               | CN, BC, OC, NC          | :heavy_multiplication_x: | -                                              |
 | RandomForest              | CN, BC, OC, NC          | :heavy_multiplication_x: | -                                              |
 | BoostedTrees              | CN, BC, OC, NC          | :heavy_multiplication_x: | Gradient Descent with Backtracking Line Search |
-| MultiBinaryClassification | -                       | :heavy_check_mark:       | -                                              |
 | Bootstrapping             | -                       | :heavy_check_mark:       | -                                              |
-| GradientBoosting          | -                       | :heavy_check_mark:       | Gradient Descent with Backtracking Line Search |
+| MultiBinaryClassification | -                       | :heavy_check_mark:       | -                                              |
 
 Classifiers predict categorical dependent variables. They are used to predict which class an observation belongs to. Examples include the prediction of which animal an image represents or which species of flower a specimen belongs to based on its petal measurements. Classification models make `int` predictions. All classifiers can be used as binary classifiers as well.
 
