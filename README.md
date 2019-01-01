@@ -39,7 +39,7 @@ Regression models predict continuous dependent variables. They can be used, for 
 Binary classifiers predict binary dependent variables. The only two values the predictions can take on are 0 and 1. These values usually encode a true or false relationship with 1 meaning that the observation is predicted to belong to the class in question and 0 meaning it is not. They can be applied to problems such as the prediction of whether a mushroom is edible or whether a transaction fraudulent. The data type of these models' predictions is always `int`.
 
 ### Classification
-| Classification Model      | Supported Feature Types | Meta                     | Optimization Method                            |
+| Model                     | Supported Feature Types | Meta                     | Optimization Method                            |
 | ------------------------- | ----------------------- | ------------------------ | ---------------------------------------------- |
 | NaiveBayes                | CN, BC, OC, NC          | :heavy_multiplication_x: | -                                              |
 | KNearestNeighbors         | CN, BC, OC              | :heavy_multiplication_x: | -                                              |
