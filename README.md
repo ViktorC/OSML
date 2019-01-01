@@ -13,43 +13,43 @@ The models only operate on numerical data. The possible data types explanatory v
 All columns with `float` data type are assumed to represent continuous features, while all `int` columns correspond to categorical features. Every model supports continuous variables but not every model can handle all types of categorical variables. Both binary and ordinal variables work reasonably well with all algorithms, but only a few of them can handle nominal features. The tables below highlight some of the main characteristics of the algorithms offered by the library.
 
 ### Regression
-| Model                       | Supported Feature Types | Meta                     | Optimization Method                            |
-| --------------------------- | ----------------------- | ------------------------ | ---------------------------------------------- |
-| LinearRegression            | CN, BC, OC              | :heavy_multiplication_x: | Analytic                                       |
-| LinearRidgeRegression       | CN, BC, OC              | :heavy_multiplication_x: | Analytic                                       |
-| LinearLassoRegression       | CN, BC, OC              | :heavy_multiplication_x: | Coordinate Descent with Exact Line Search      |
-| KNearestNeighborsRegression | CN, BC, OC              | :heavy_multiplication_x: | -                                              |
-| DecisionTreeRegression      | CN, BC, OC, NC          | :heavy_multiplication_x: | -                                              |
-| BaggedTreesRegression       | CN, BC, OC, NC          | :heavy_multiplication_x: | -                                              |
-| RandomForestRegression      | CN, BC, OC, NC          | :heavy_multiplication_x: | -                                              |
-| BoostedTreesRegression      | CN, BC, OC, NC          | :heavy_multiplication_x: | Gradient Descent with Backtracking Line Search |
-| BootstrappingRegression     | -                       | :heavy_check_mark:       | -                                              |
-| GradientBoostingRegression  | -                       | :heavy_check_mark:       | Gradient Descent with Backtracking Line Search |
+| Model                 | Supported Feature Types | Meta                     | Optimization Method                            |
+| --------------------- | ----------------------- | ------------------------ | ---------------------------------------------- |
+| LinearRegression      | CN, BC, OC              | :heavy_multiplication_x: | Analytic                                       |
+| LinearRidgeRegression | CN, BC, OC              | :heavy_multiplication_x: | Analytic                                       |
+| LinearLassoRegression | CN, BC, OC              | :heavy_multiplication_x: | Coordinate Descent with Exact Line Search      |
+| KNearestNeighbors     | CN, BC, OC              | :heavy_multiplication_x: | -                                              |
+| DecisionTree          | CN, BC, OC, NC          | :heavy_multiplication_x: | -                                              |
+| BaggedTrees           | CN, BC, OC, NC          | :heavy_multiplication_x: | -                                              |
+| RandomForest          | CN, BC, OC, NC          | :heavy_multiplication_x: | -                                              |
+| BoostedTrees          | CN, BC, OC, NC          | :heavy_multiplication_x: | Gradient Descent with Backtracking Line Search |
+| Bootstrapping         | -                       | :heavy_check_mark:       | -                                              |
+| GradientBoosting      | -                       | :heavy_check_mark:       | Gradient Descent with Backtracking Line Search |
 
 Regression models predict continuous dependent variables. They can be used, for example, to predict house prices and temperatures. The data type of such predictions is always `float`.
 
 ### Binary Classification
-| Model                                | Supported Feature Types | Meta                     | Optimization Method                            |
-| ------------------------------------ | ----------------------- | ------------------------ | ---------------------------------------------- |
-| LogisticRegression                   | CN, BC, OC              | :heavy_multiplication_x: | Newton-Raphson                                 |
-| LogisticRidgeRegression              | CN, BC, OC              | :heavy_multiplication_x: | Newton-Raphson                                 |
-| BoostedTreesBinaryClassification     | CN, BC, OC, NC          | :heavy_multiplication_x: | Gradient Descent with Backtracking Line Search |
-| GradientBoostingBinaryClassification | -                       | :heavy_check_mark:       | Gradient Descent with Backtracking Line Search |
+| Model                   | Supported Feature Types | Meta                     | Optimization Method                            |
+| ----------------------- | ----------------------- | ------------------------ | ---------------------------------------------- |
+| LogisticRegression      | CN, BC, OC              | :heavy_multiplication_x: | Newton-Raphson                                 |
+| LogisticRidgeRegression | CN, BC, OC              | :heavy_multiplication_x: | Newton-Raphson                                 |
+| BoostedTrees            | CN, BC, OC, NC          | :heavy_multiplication_x: | Gradient Descent with Backtracking Line Search |
+| GradientBoosting        | -                       | :heavy_check_mark:       | Gradient Descent with Backtracking Line Search |
 
 Binary classifiers predict binary dependent variables. The only two values the predictions can take on are 0 and 1. These values usually encode a true or false relationship with 1 meaning that the observation is predicted to belong to the class in question and 0 meaning it is not. They can be applied to problems such as the prediction of whether a mushroom is edible or whether a transaction fraudulent. The data type of these models' predictions is always `int`.
 
 ### Classification
-| Classification Model            | Supported Feature Types | Meta                     | Optimization Method                            |
-| ------------------------------- | ----------------------- | ------------------------ | ---------------------------------------------- |
-| NaiveBayes                      | CN, BC, OC, NC          | :heavy_multiplication_x: | -                                              |
-| KNearestNeighborsClassification | CN, BC, OC              | :heavy_multiplication_x: | -                                              |
-| DecisionTreeClassification      | CN, BC, OC, NC          | :heavy_multiplication_x: | -                                              |
-| BaggedTreesClassification       | CN, BC, OC, NC          | :heavy_multiplication_x: | -                                              |
-| RandomForestClassification      | CN, BC, OC, NC          | :heavy_multiplication_x: | -                                              |
-| BoostedTreesClassification      | CN, BC, OC, NC          | :heavy_multiplication_x: | Gradient Descent with Backtracking Line Search |
-| MultiBinaryClassification       | -                       | :heavy_check_mark:       | -                                              |
-| BootstrappingClassification     | -                       | :heavy_check_mark:       | -                                              |
-| GradientBoostingClassification  | -                       | :heavy_check_mark:       | Gradient Descent with Backtracking Line Search |
+| Classification Model      | Supported Feature Types | Meta                     | Optimization Method                            |
+| ------------------------- | ----------------------- | ------------------------ | ---------------------------------------------- |
+| NaiveBayes                | CN, BC, OC, NC          | :heavy_multiplication_x: | -                                              |
+| KNearestNeighbors         | CN, BC, OC              | :heavy_multiplication_x: | -                                              |
+| DecisionTree              | CN, BC, OC, NC          | :heavy_multiplication_x: | -                                              |
+| BaggedTrees               | CN, BC, OC, NC          | :heavy_multiplication_x: | -                                              |
+| RandomForest              | CN, BC, OC, NC          | :heavy_multiplication_x: | -                                              |
+| BoostedTrees              | CN, BC, OC, NC          | :heavy_multiplication_x: | Gradient Descent with Backtracking Line Search |
+| MultiBinaryClassification | -                       | :heavy_check_mark:       | -                                              |
+| Bootstrapping             | -                       | :heavy_check_mark:       | -                                              |
+| GradientBoosting          | -                       | :heavy_check_mark:       | Gradient Descent with Backtracking Line Search |
 
 Classifiers predict categorical dependent variables. They are used to predict which class an observation belongs to. Examples include the prediction of which animal an image represents or which species of flower a specimen belongs to based on its petal measurements. Classification models make `int` predictions. All classifiers can be used as binary classifiers as well.
 
