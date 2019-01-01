@@ -30,7 +30,7 @@ def test_model_loss(data_set, model, max_test_loss):
     (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.LinearRegression(), 7.),
     (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.LinearRidgeRegression(), 7.5),
     (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.LinearLassoRegression(), 7.5),
-    (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.KNearestNeighborsRegression(), 7.),
+    (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.KNearestNeighborsRegression(), 7.2),
     (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.DecisionTreeRegression(), 6.5),
     (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.BaggedTreesRegression(number_of_models=5), 6.4),
     (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.RandomForestRegression(number_of_models=5), 6.2),
