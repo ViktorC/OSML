@@ -1,6 +1,70 @@
 # OSML [![Build Status](https://travis-ci.org/ViktorC/OSML.svg?branch=master)](https://travis-ci.org/ViktorC/OSML)
 A simple Python library of 'old school' machine learning algorithms such as linear regression, logistic regression, naive Bayes, k-nearest neighbors, decision trees, support vector machines, and meta models like bootstrap aggregating and gradient boosting. OSML uses the [pandas](https://pandas.pydata.org/) and [NumPy](http://www.numpy.org/) libraries for manipulating data and performing basic linear algebra operations.
 
+## Models
+The primary components of the library are the machine learning models. They can be grouped into three major categories; regression, classification, and binary classification. Some of the models are parametric while others are rule based. There are also a number of meta-models that utilize multiple instances of other models.
+
+The models only operate on numerical data. The possible data types explanatory variables may have are as below:
+- Continuous (CN)
+- Binary Categorical (BC)
+- Ordinal Categorical (OC)
+- Nominal Categorical (NC)  
+
+All columns with `float` data type are assumed to represent continuous features, while all `int` columns correspond to categorical features. Every model supports continuous variables but not every model can handle all types of categorical variables. Both binary and ordinal variables work reasonably well with all algorithms, but only a few of them can handle nominal features. The tables below highlight some of the main characteristics of the algorithms offered by the library.
+
+### Regression
+| Model                       | Supported Feature Types | Meta                     | Optimization Method                            |
+| --------------------------- | ----------------------- | ------------------------ | ---------------------------------------------- |
+| LinearRegression            | CN, BC, OC              | :heavy_multiplication_x: | Analytic                                       |
+| LinearRidgeRegression       | CN, BC, OC              | :heavy_multiplication_x: | Analytic                                       |
+| LinearLassoRegression       | CN, BC, OC              | :heavy_multiplication_x: | Coordinate Descent with Exact Line Search      |
+| KNearestNeighborsRegression | CN, BC, OC              | :heavy_multiplication_x: | -                                              |
+| DecisionTreeRegression      | CN, BC, OC, NC          | :heavy_multiplication_x: | -                                              |
+| BaggedTreesRegression       | CN, BC, OC, NC          | :heavy_multiplication_x: | -                                              |
+| RandomForestRegression      | CN, BC, OC, NC          | :heavy_multiplication_x: | -                                              |
+| BoostedTreesRegression      | CN, BC, OC, NC          | :heavy_multiplication_x: | Gradient Descent with Backtracking Line Search |
+| BootstrappingRegression     | -                       | :heavy_check_mark:       | -                                              |
+| GradientBoostingRegression  | -                       | :heavy_check_mark:       | Gradient Descent with Backtracking Line Search |
+
+Regression models predict continuous dependent variables. They can be used, for example, to predict house prices and temperatures. The data type of such predictions is always `float`.
+
+### Binary Classification
+| Model                                | Supported Feature Types | Meta                     | Optimization Method                            |
+| ------------------------------------ | ----------------------- | ------------------------ | ---------------------------------------------- |
+| LogisticRegression                   | CN, BC, OC              | :heavy_multiplication_x: | Newton-Raphson                                 |
+| LogisticRidgeRegression              | CN, BC, OC              | :heavy_multiplication_x: | Newton-Raphson                                 |
+| BoostedTreesBinaryClassification     | CN, BC, OC, NC          | :heavy_multiplication_x: | Gradient Descent with Backtracking Line Search |
+| GradientBoostingBinaryClassification | -                       | :heavy_check_mark:       | Gradient Descent with Backtracking Line Search |
+
+Binary classifiers predict binary dependent variables. The only two values the predictions can take on are 0 and 1. These values usually encode a true or false relationship with 1 meaning that the observation is predicted to belong to the class in question and 0 meaning it is not. They can be applied to problems such as the prediction of whether a mushroom is edible or whether a transaction fraudulent. The data type of these models' predictions is always `int`.
+
+### Classification
+| Classification Model            | Supported Feature Types | Meta                     | Optimization Method                            |
+| ------------------------------- | ----------------------- | ------------------------ | ---------------------------------------------- |
+| NaiveBayes                      | CN, BC, OC, NC          | :heavy_multiplication_x: | -                                              |
+| KNearestNeighborsClassification | CN, BC, OC              | :heavy_multiplication_x: | -                                              |
+| DecisionTreeClassification      | CN, BC, OC, NC          | :heavy_multiplication_x: | -                                              |
+| BaggedTreesClassification       | CN, BC, OC, NC          | :heavy_multiplication_x: | -                                              |
+| RandomForestClassification      | CN, BC, OC, NC          | :heavy_multiplication_x: | -                                              |
+| BoostedTreesClassification      | CN, BC, OC, NC          | :heavy_multiplication_x: | Gradient Descent with Backtracking Line Search |
+| MultiBinaryClassification       | -                       | :heavy_check_mark:       | -                                              |
+| BootstrappingClassification     | -                       | :heavy_check_mark:       | -                                              |
+| GradientBoostingClassification  | -                       | :heavy_check_mark:       | Gradient Descent with Backtracking Line Search |
+
+Classifiers predict categorical dependent variables. They are used to predict which class an observation belongs to. Examples include the prediction of which animal an image represents or which species of flower a specimen belongs to based on its petal measurements. Classification models make `int` predictions. All classifiers can be used as binary classifiers as well.
+
+## Data
+OSML also provides a number of different data sets the models can be tested on. It also includes functions for splitting observations and labels into training and test data sets, random shuffling data, and oversampling. The table below showcases the data sets including the types of their features and their labels.
+
+| Data Set | Default Problem Type  | Feature Types |
+| -------- | --------------------- | ------------- |
+| Boston   | Regression            | CN, BC        |
+| Exam     | Binary Classification | CN            |
+| Iris     | Classification        | CN            |
+| Titanic  | Binary Classification | CN, BC, OC    |
+| Mushroom | Binary Classification | BC            |
+| IMDb     | Classification        | CN, BC        |
+
 ## Usage
 The library has an API similar to that of sklearn. Data sets generally contain four collections of data; a training data frame, a series of training labels, a test data frame, and a series of test labels. Each model has a `fit` function that takes a data frame of observations and a series of labels as its arguments. The `predict` function can be used on fitted models to make predictions about the labels of a data frame of observations. All models have an `evaluate` function as well that measures the fit of a series of predictions to a series of labels based on some metric. This metric is the root mean squared error for regression models, accuracy for classification models, and the F1 score for binary classification models. Finally, models that optimize a loss function also have a `test` method that measures the error of the predictions of the model according to the loss function.
 
@@ -20,46 +84,3 @@ predictions = model.predict(data_set.get_test_observations())
 accuracy = model.evaluate(predictions, data_set.get_test_labels())
 print('accuracy:', accuracy)
 ```
-
-## Data
-| Data Set | Default Label Type | Feature Types |
-| -------- | ------------------ | ------------- |
-| Boston   | CN                 | CN, BC        |
-| Exam     | BC                 | CN            |
-| Iris     | CT                 | CN            |
-| Titanic  | BC                 | CN, BC, OC    |
-| Mushroom | BC                 | BC            |
-| IMDb     | CT                 | CN, BC        |
-
-CN = Continuous  
-CT = Categorical  
-BC = Binary Categorical  
-OC = Ordinal Categorical  
-NC = Nominal Categorical  
-
-## Models
-| Model                                | Prediction Type | Supported Feature Types | Optimization Method                              | Meta                     |
-| ------------------------------------ | --------------- | ----------------------- | ----------------------------------------------- | ------------------------ |
-| LinearRegression                     | CN              | CN, BC, OC              | Analytic                                        | :heavy_multiplication_x: |
-| LinearRidgeRegression                | CN              | CN, BC, OC              | Analytic                                        | :heavy_multiplication_x: |
-| LinearLassoRegression                | CN              | CN, BC, OC              | Coordinate Descent with Exact Line Search        | :heavy_multiplication_x: |
-| LogisticRegression                   | BC              | CN, BC, OC              | Newton-Raphson                                  | :heavy_multiplication_x: |
-| LogisticRidgeRegression              | BC              | CN, BC, OC              | Newton-Raphson                                  | :heavy_multiplication_x: |
-| NaiveBayes                           | CT              | CN, BC, OC, NC          | -                                                | :heavy_multiplication_x: |
-| KNearestNeighborsRegression          | CN              | CN, BC, OC              | -                                                | :heavy_multiplication_x: |
-| KNearestNeighborsClassification      | CT              | CN, BC, OC              | -                                                | :heavy_multiplication_x: |
-| DecisionTreeRegression               | CN              | CN, BC, OC, NC          | -                                                | :heavy_multiplication_x: |
-| DecisionTreeClassification           | CT              | CN, BC, OC, NC          | -                                                | :heavy_multiplication_x: |
-| BaggedTreesRegression                | CN              | CN, BC, OC, NC          | -                                                | :heavy_multiplication_x: |
-| BaggedTreesClassification            | CT              | CN, BC, OC, NC          | -                                                | :heavy_multiplication_x: |
-| RandomForestRegression               | CN              | CN, BC, OC, NC          | -                                                | :heavy_multiplication_x: |
-| RandomForestClassification           | CT              | CN, BC, OC, NC          | -                                                | :heavy_multiplication_x: |
-| BoostedTreesRegression               | CN              | CN, BC, OC, NC          | Gradient Descent with Backtracking Line Search | :heavy_multiplication_x: |
-| BoostedTreesBinaryClassification     | BC              | CN, BC, OC, NC          | Gradient Descent with Backtracking Line Search | :heavy_multiplication_x: |
-| BoostedTreesClassification           | CT              | CN, BC, OC, NC          | Gradient Descent with Backtracking Line Search | :heavy_multiplication_x: |
-| MultiBinaryClassification            | CT              | -                       | -                                                | :heavy_check_mark:       |
-| BootstrappingRegression              | CN              | -                       | -                                                | :heavy_check_mark:       |
-| BootstrappingClassification          | CT              | -                       | -                                                | :heavy_check_mark:       |
-| GradientBoostingRegression           | CN              | -                       | Gradient Descent with Backtracking Line Search | :heavy_check_mark:       |
-| GradientBoostingBinaryClassification | BC              | -                       | Gradient Descent with Backtracking Line Search | :heavy_check_mark:       |
-| GradientBoostingClassification       | CT              | -                       | Gradient Descent with Backtracking Line Search | :heavy_check_mark:       |
