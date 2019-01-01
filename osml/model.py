@@ -999,12 +999,12 @@ class BootstrapAggregatingRegression(BootstrapAggregating, RegressionModel):
 
 class GradientBoosting(Model):
     """A gradient boosting abstract meta model class."""
-    def __init__(self, base_model, iterations, sampling_factor, min_gradient, max_step_size, step_size_decay_factor,
-                 armijo_factor):
+    def __init__(self, base_model, number_of_models, sampling_factor, min_gradient, max_step_size,
+                 step_size_decay_factor, armijo_factor):
         super(GradientBoosting, self).__init__()
         if not isinstance(base_model, RegressionModel):
             raise ValueError
-        if iterations is None or iterations < 1:
+        if number_of_models is None or number_of_models < 1:
             raise ValueError
         if sampling_factor is None or not 0 < sampling_factor <= 1:
             raise ValueError
@@ -1017,7 +1017,7 @@ class GradientBoosting(Model):
         if armijo_factor is None or not 0 < armijo_factor < 1:
             raise ValueError
         self.base_model = base_model
-        self.iterations = iterations
+        self.number_of_models = number_of_models
         self.sampling_factor = sampling_factor
         self.min_gradient = min_gradient
         self.max_step_size = max_step_size
@@ -1063,7 +1063,7 @@ class GradientBoosting(Model):
     def _fit(self, observations_df, labels_sr):
         self._weighted_models = []
         predictions_sr = pd.Series(np.zeros((len(observations_df.index), )))
-        for i in range(self.iterations):
+        for i in range(self.number_of_models):
             gradient_sr = self._d_loss_wrt_raw_predictions(predictions_sr, labels_sr)
             if np.all(np.absolute(gradient_sr.values) <= self.min_gradient):
                 break
@@ -1079,9 +1079,9 @@ class GradientBoosting(Model):
 
 class GradientBoostingBinaryClassification(GradientBoosting, BinaryClassificationModel):
     """A gradient boosting binary classification meta model minimizing the log loss function."""
-    def __init__(self, base_model, iterations, sampling_factor=1., min_gradient=1e-7, max_step_size=1000.,
+    def __init__(self, base_model, number_of_models, sampling_factor=1., min_gradient=1e-7, max_step_size=1000.,
                  step_size_decay_factor=.7, armijo_factor=.7):
-        GradientBoosting.__init__(self, base_model, iterations, sampling_factor, min_gradient, max_step_size,
+        GradientBoosting.__init__(self, base_model, number_of_models, sampling_factor, min_gradient, max_step_size,
                                   step_size_decay_factor, armijo_factor)
         BinaryClassificationModel.__init__(self)
 
@@ -1101,9 +1101,9 @@ class GradientBoostingBinaryClassification(GradientBoosting, BinaryClassificatio
 
 class GradientBoostingRegression(GradientBoosting, RegressionModel):
     """A gradient boosting regression meta model minimizing the MSE loss function."""
-    def __init__(self, base_model, iterations, sampling_factor=1., min_gradient=1e-7, max_step_size=1000.,
+    def __init__(self, base_model, number_of_models, sampling_factor=1., min_gradient=1e-7, max_step_size=1000.,
                  step_size_decay_factor=.7, armijo_factor=.7):
-        GradientBoosting.__init__(self, base_model, iterations, sampling_factor, min_gradient, max_step_size,
+        GradientBoosting.__init__(self, base_model, number_of_models, sampling_factor, min_gradient, max_step_size,
                                   step_size_decay_factor, armijo_factor)
         RegressionModel.__init__(self)
 
@@ -1168,7 +1168,7 @@ class RandomForestRegression(BootstrapAggregatingRegression):
 
 class BoostedTreesBinaryClassification(GradientBoostingBinaryClassification):
     """A gradient boosting binary classification model using regression decision trees."""
-    def __init__(self, iterations, max_depth=None, min_observations=2, min_variance=0., min_variance_reduction=0.,
+    def __init__(self, number_of_models, max_depth=None, min_observations=2, min_variance=0., min_variance_reduction=0.,
                  random_feature_selection=False, feature_sample_size_function=math.sqrt, sampling_factor=1.,
                  min_gradient=1e-7, max_step_size=1000., step_size_decay_factor=.7, armijo_factor=.7):
         super(BoostedTreesBinaryClassification, self)\
@@ -1176,17 +1176,18 @@ class BoostedTreesBinaryClassification(GradientBoostingBinaryClassification):
                                              min_variance=min_variance, min_variance_reduction=min_variance_reduction,
                                              random_feature_selection=random_feature_selection,
                                              feature_sample_size_function=feature_sample_size_function),
-                      iterations, sampling_factor, min_gradient, max_step_size, step_size_decay_factor, armijo_factor)
+                      number_of_models, sampling_factor, min_gradient, max_step_size, step_size_decay_factor,
+                      armijo_factor)
 
 
 class BoostedTreesClassification(MultiBinaryClassification):
     """A gradient boosting multinomial classification model using regression decision trees."""
-    def __init__(self, iterations, number_of_processes, max_depth=None, min_observations=2, min_variance=0.,
+    def __init__(self, number_of_models, number_of_processes, max_depth=None, min_observations=2, min_variance=0.,
                  min_variance_reduction=0., random_feature_selection=False, feature_sample_size_function=math.sqrt,
                  sampling_factor=1., min_gradient=1e-7, max_step_size=1000., step_size_decay_factor=.7,
                  armijo_factor=.7):
         super(BoostedTreesClassification, self)\
-            .__init__(BoostedTreesBinaryClassification(iterations, max_depth, min_observations, min_variance,
+            .__init__(BoostedTreesBinaryClassification(number_of_models, max_depth, min_observations, min_variance,
                                                        min_variance_reduction, random_feature_selection,
                                                        feature_sample_size_function, sampling_factor, min_gradient,
                                                        max_step_size, step_size_decay_factor, armijo_factor),
@@ -1195,7 +1196,7 @@ class BoostedTreesClassification(MultiBinaryClassification):
 
 class BoostedTreesRegression(GradientBoostingRegression):
     """A gradient boosting regression model using regression decision trees."""
-    def __init__(self, iterations, max_depth=None, min_observations=2,
+    def __init__(self, number_of_models, max_depth=None, min_observations=2,
                  min_variance=0., min_variance_reduction=0., random_feature_selection=False,
                  feature_sample_size_function=math.sqrt, sampling_factor=1., min_gradient=1e-7, max_step_size=1000.,
                  step_size_decay_factor=.7, armijo_factor=.7):
@@ -1204,4 +1205,5 @@ class BoostedTreesRegression(GradientBoostingRegression):
                                              min_variance=min_variance, min_variance_reduction=min_variance_reduction,
                                              random_feature_selection=random_feature_selection,
                                              feature_sample_size_function=feature_sample_size_function),
-                      iterations, sampling_factor, min_gradient, max_step_size, step_size_decay_factor, armijo_factor)
+                      number_of_models, sampling_factor, min_gradient, max_step_size, step_size_decay_factor,
+                      armijo_factor)
