@@ -77,7 +77,7 @@ import osml.data as osd
 import osml.model as osm
 
 data_set = osd.IrisDataSet('data/iris/iris.csv')
-model = osm.RandomForestClassification(number_of_models=50)
+model = osm.RandomForestClassification(number_of_models=64)
 model.fit(data_set.get_training_observations(), data_set.get_training_observations())
 
 predictions = model.predict(data_set.get_test_observations())

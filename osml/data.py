@@ -267,42 +267,45 @@ class MushroomDataSet(DataSet):
 
 
 class IMDBDataSet(DataSet):
-    """A data set of movie attributes as data points and user ratings as the labels based on an IMDB ratings history."""
+    """A data set of movie attributes as data points and user ratings as the labels based on an IMDb ratings history."""
     def __init__(self, data_path, shuffle_data=True, reset_indices=True, oversample_training_data=True,
                  test_share=.2, label_column_idx=0, min_director_occurrences=2, binary=False, positive_rating_cutoff=7):
-        complete_df = pd.read_csv(data_path, encoding='ISO-8859-1')
-        complete_df = complete_df.drop('Const', axis=1)
-        complete_df = complete_df.drop('Date Rated', axis=1)
-        complete_df = complete_df.drop('Title', axis=1)
-        complete_df = complete_df.drop('URL', axis=1)
-        complete_df = complete_df.drop('Year', axis=1)
-        complete_df.dropna(inplace=True)
-        complete_df['Release Date'] = complete_df['Release Date']\
+        observations_df = pd.read_csv(data_path, encoding='ISO-8859-1')
+        observations_df = observations_df.drop('Title', axis=1)
+        observations_df = observations_df.drop('URL', axis=1)
+        observations_df = observations_df.drop('Year', axis=1)
+        observations_df.dropna(inplace=True)
+        observations_df['Release Date'] = observations_df['Release Date']\
             .apply(lambda e: self.calculate_days_since_release(dt.datetime.strptime(e, "%Y-%m-%d")))
-        complete_df.rename(columns={'Release Date': 'Age (years)', 'Num Votes': 'Votes (1k)'}, inplace=True)
-        complete_df['Age (years)'] = complete_df['Age (years)'].astype(np.float_) / 365.
-        complete_df['Votes (1k)'] = complete_df['Votes (1k)'].astype(np.float_) / 1000.
-        complete_df = pd.get_dummies(complete_df, columns=["Title Type"], prefix=["Type"], dtype=np.byte)
-        genres_dummies_df = complete_df.pop('Genres').str.get_dummies(sep=', ')
+        observations_df['Date Rated'] = observations_df['Date Rated'] \
+            .apply(lambda e: self.calculate_days_since_release(dt.datetime.strptime(e, "%Y-%m-%d")))
+        observations_df.rename(columns={'Release Date': 'Title Age (years)', 'Date Rated': 'Rating Age (years)',
+                                        'Num Votes': 'Votes (1k)'}, inplace=True)
+        observations_df['Title Age (years)'] = observations_df['Title Age (years)'].astype(np.float_) / 365.
+        observations_df['Rating Age (years)'] = observations_df['Rating Age (years)'].astype(np.float_) / 365.
+        observations_df['Votes (1k)'] = observations_df['Votes (1k)'].astype(np.float_) / 1000.
+        observations_df = pd.get_dummies(observations_df, columns=["Title Type"], prefix=["Type"], dtype=np.byte)
+        genres_dummies_df = observations_df.pop('Genres').str.get_dummies(sep=', ')
         genres_dummies_df = genres_dummies_df.add_prefix('Genre_')
         genres_dummies_df = genres_dummies_df.astype(np.byte)
-        complete_df = complete_df.join(genres_dummies_df)
-        directors_dummies_df = complete_df.pop('Directors').str.get_dummies(sep=', ')
+        observations_df = observations_df.join(genres_dummies_df)
+        directors_dummies_df = observations_df.pop('Directors').str.get_dummies(sep=', ')
         directors_to_drop = [c for c in directors_dummies_df.columns
                              if directors_dummies_df[c].sum() < min_director_occurrences]
         directors_dummies_df = directors_dummies_df.drop(directors_to_drop, axis=1)
         directors_dummies_df = directors_dummies_df.add_prefix('Director_')
         directors_dummies_df = directors_dummies_df.astype(np.byte)
-        complete_df = complete_df.join(directors_dummies_df)
-        labels_sr = pd.Series(complete_df[complete_df.columns[label_column_idx]])
+        observations_df = observations_df.join(directors_dummies_df)
+        labels_sr = observations_df.pop(observations_df.columns[label_column_idx + 1])
         if binary:
             labels_sr = labels_sr.apply(lambda e: 1 if e >= positive_rating_cutoff else 0)
-        observations_df = complete_df.drop(complete_df.columns[label_column_idx], axis=1)
         self.training_observations_df, self.test_observations_df, self.training_labels_sr, self.test_labels_sr = \
             split_train_test(observations_df, labels_sr, test_share, shuffle_data, reset_indices)
         if oversample_training_data:
             self.training_observations_df, self.training_labels_sr = oversample(self.training_observations_df,
                                                                                 self.training_labels_sr)
+        self.training_observation_ids_sr = self.training_observations_df.pop('Const')
+        self.test_observation_ids_sr = self.test_observations_df.pop('Const')
 
     @staticmethod
     def calculate_days_since_release(release_date):
@@ -345,6 +348,22 @@ class IMDBDataSet(DataSet):
             if director_column in observation_df.columns:
                 observation_df.at[0, director_column] = 1
         return observation_df
+
+    def get_training_observation_ids(self):
+        """Returns a series of IMDb title IDs with each element corresponding to a row of the training observations.
+
+        Returns:
+            A pandas series of IMDb IDs.
+        """
+        return self.training_observation_ids_sr
+
+    def get_test_observation_ids(self):
+        """Returns a series of IMDb title IDs with each element corresponding to a row of the test observations.
+
+        Returns:
+            A pandas series of IMDb IDs.
+        """
+        return self.test_observation_ids_sr
 
     def get_training_observations(self):
         return self.training_observations_df
