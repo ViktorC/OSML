@@ -122,9 +122,7 @@ def test_regression_error_compared_to_sklearn(data_set, model, sk_model, max_err
     (osmld.IrisDataSet('data/iris/iris.csv'), osmlm.BaggedTreesClassification(number_of_models=10),
         ske.BaggingClassifier(n_estimators=10), .8, .1),
     (osmld.IrisDataSet('data/iris/iris.csv'), osmlm.RandomForestClassification(number_of_models=10),
-        ske.RandomForestClassifier(n_estimators=10), .8, .1),
-    (osmld.IrisDataSet('data/iris/iris.csv'), osmlm.BoostedTreesClassification(
-        number_of_models=10, number_of_processes=3), ske.GradientBoostingClassifier(n_estimators=10), .8, .1)
+        ske.RandomForestClassifier(n_estimators=10), .8, .1)
 ])
 def test_classification_accuracy_compared_to_sklearn(data_set, model, sk_model, min_accuracy_compared_to_sk,
                                                      min_abs_accuracy_diff):

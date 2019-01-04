@@ -1214,20 +1214,6 @@ class BoostedTreesBinaryClassification(GradientBoostingBinaryClassification):
                       armijo_factor)
 
 
-class BoostedTreesClassification(MultiBinaryClassification):
-    """A gradient boosting multinomial classification model using regression decision trees."""
-    def __init__(self, number_of_models, number_of_processes, max_depth=None, min_observations=1, min_variance=0.,
-                 min_variance_reduction=0., random_feature_selection=False, feature_sample_size_function=math.sqrt,
-                 sampling_factor=1., min_gradient=1e-7, max_step_size=1000., step_size_decay_factor=.7,
-                 armijo_factor=.7):
-        super(BoostedTreesClassification, self)\
-            .__init__(BoostedTreesBinaryClassification(number_of_models, max_depth, min_observations, min_variance,
-                                                       min_variance_reduction, random_feature_selection,
-                                                       feature_sample_size_function, sampling_factor, min_gradient,
-                                                       max_step_size, step_size_decay_factor, armijo_factor),
-                      number_of_processes)
-
-
 class BoostedTreesRegression(GradientBoostingRegression):
     """A gradient boosting regression model using regression decision trees."""
     def __init__(self, number_of_models, max_depth=None, min_observations=1, min_variance=0., min_variance_reduction=0.,
