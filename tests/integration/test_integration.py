@@ -85,14 +85,14 @@ def test_binary_classification_f1_score(data_set, model, min_f1_score):
     (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.LinearLassoRegression(), sklm.Lasso(), 1.15, .15),
     (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.KNearestNeighborsRegression(),
         sknn.KNeighborsRegressor(n_neighbors=7, weights='distance'), 1.25, .1),
-    (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.DecisionTreeRegression(), skt.DecisionTreeRegressor(), 1.45,
-        .3),
+    (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.DecisionTreeRegression(),
+        skt.DecisionTreeRegressor(), 1.25, .5),
     (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.BaggedTreesRegression(number_of_models=10),
-        ske.BaggingRegressor(n_estimators=10), 1.45, .3),
+        ske.BaggingRegressor(n_estimators=10), 1.25, .5),
     (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.RandomForestRegression(number_of_models=10),
-        ske.RandomForestRegressor(n_estimators=10), 1.45, .3),
+        ske.RandomForestRegressor(n_estimators=10), 1.25, .5),
     (osmld.BostonDataSet('data/boston/boston.csv'), osmlm.BoostedTreesRegression(number_of_models=5),
-        ske.GradientBoostingRegressor(n_estimators=5), 1.45, .3)
+        ske.GradientBoostingRegressor(n_estimators=5), 1.25, .5)
 ])
 def test_regression_error_compared_to_sklearn(data_set, model, sk_model, max_error_compared_to_sk, min_abs_error_diff):
     model.fit(data_set.get_training_observations(), data_set.get_training_labels())
@@ -101,6 +101,8 @@ def test_regression_error_compared_to_sklearn(data_set, model, sk_model, max_err
     sk_predictions = pd.Series(sk_model.predict(data_set.get_test_observations().values), dtype=predictions.dtype)
     model_error = model.evaluate(predictions, data_set.get_test_labels())
     sk_model_error = model.evaluate(sk_predictions, data_set.get_test_labels())
+    print(model_error)
+    print(sk_model_error)
     assert abs(model_error - sk_model_error) < min_abs_error_diff or \
         model_error / sk_model_error <= max_error_compared_to_sk
 
@@ -109,7 +111,7 @@ def test_regression_error_compared_to_sklearn(data_set, model, sk_model, max_err
     (osmld.IrisDataSet('data/iris/iris.csv'), osmlm.NaiveBayes(), sknb.GaussianNB(), .95, .05),
     (osmld.MushroomDataSet('data/mushroom/mushroom.csv'), osmlm.NaiveBayes(), sknb.MultinomialNB(), .95, .05),
     (osmld.ExamDataSet('data/exam/ex4x.dat', 'data/exam/ex4y.dat'), osmlm.KNearestNeighborsClassification(),
-     sknn.KNeighborsClassifier(n_neighbors=7, weights='distance'), .6, .2),
+     sknn.KNeighborsClassifier(n_neighbors=7, weights='distance'), .8, .1),
     (osmld.IrisDataSet('data/iris/iris.csv'), osmlm.KNearestNeighborsClassification(),
         sknn.KNeighborsClassifier(n_neighbors=7, weights='distance'), .8, .1),
     (osmld.MushroomDataSet('data/mushroom/mushroom.csv'), osmlm.DecisionTreeClassification(),

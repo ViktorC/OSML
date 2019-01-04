@@ -564,14 +564,20 @@ class NaiveBayes(ClassificationModel):
 
 
 class KNearestNeighbors(Model):
-    """An abstract weighted k-nearest neighbors model."""
-    def __init__(self, k, standardize):
+    """An abstract weighted k-nearest neighbors model.
+
+    See: https://epub.ub.uni-muenchen.de/1769/1/paper_399.pdf
+    """
+    def __init__(self, k, rbf_gamma, standardize):
         super(KNearestNeighbors, self).__init__()
         if k is None or k < 1:
+            raise ValueError
+        if rbf_gamma <= 0:
             raise ValueError
         if not isinstance(standardize, bool):
             raise ValueError
         self.k = k
+        self.rbf_gamma = rbf_gamma
         self.standardize = standardize
         self._observations_mean = None
         self._observations_sd = None
@@ -582,10 +588,9 @@ class KNearestNeighbors(Model):
         # Simple Euclidian distance.
         return np.sqrt(np.square(self._preprocessed_observations - observation).sum(axis=1))
 
-    @staticmethod
-    def _weight(distance):
-        # Gaussian kernel function.
-        return math.exp(-(distance ** 2) / 2) / math.sqrt(2 * math.pi)
+    def _weight(self, distance):
+        # Radial basis function kernel.
+        return math.exp(-self.rbf_gamma * (distance ** 2))
 
     def _select_weighted_nearest_neighbors(self, observation):
         if self.standardize:
@@ -593,9 +598,9 @@ class KNearestNeighbors(Model):
         else:
             preprocessed_observation = observation
         distances = self._distances(preprocessed_observation)
-        k_plus_1_nn_indices = np.argpartition(distances, self.k + 1)
+        k_plus_1_nn_indices = np.argpartition(distances, self.k + 1)[:self.k + 1]
         k_plus_1_nn = pd.Series(distances[k_plus_1_nn_indices], index=k_plus_1_nn_indices)
-        k_plus_1_nn = k_plus_1_nn.sort_values()
+        k_plus_1_nn = k_plus_1_nn.sort_values(ascending=False)
         weighted_nearest_neighbor_labels = {}
         distance_to_normalize_by = None
         for i, value in k_plus_1_nn.iteritems():
@@ -627,8 +632,8 @@ class KNearestNeighbors(Model):
 
 class KNearestNeighborsRegression(KNearestNeighbors, RegressionModel):
     """A weighted k-nearest neighbors regression model."""
-    def __init__(self, k=7, standardize=True):
-        KNearestNeighbors.__init__(self, k, standardize)
+    def __init__(self, k=7, rbf_gamma=1, standardize=True):
+        KNearestNeighbors.__init__(self, k, rbf_gamma, standardize)
         RegressionModel.__init__(self)
 
     def _predict(self, observations_df):
@@ -645,8 +650,8 @@ class KNearestNeighborsRegression(KNearestNeighbors, RegressionModel):
 
 class KNearestNeighborsClassification(KNearestNeighbors, ClassificationModel):
     """A weighted k-nearest neighbors classification model."""
-    def __init__(self, k=7, standardize=True):
-        KNearestNeighbors.__init__(self, k, standardize)
+    def __init__(self, k=7, rbf_gamma=1, standardize=True):
+        KNearestNeighbors.__init__(self, k, rbf_gamma, standardize)
         ClassificationModel.__init__(self)
 
     def _predict(self, observations_df):
@@ -670,7 +675,7 @@ class DecisionTree(Model):
         if random_feature_selection is None or not isinstance(random_feature_selection, bool):
             raise ValueError
         self.max_depth = max_depth
-        self.min_observations = max(2, min_observations) if min_observations is not None else 2
+        self.min_observations = max(1, min_observations) if min_observations is not None else 1
         self.min_impurity = max(0, min_impurity) if min_impurity is not None else 0
         self.min_impurity_reduction = min_impurity_reduction if min_impurity_reduction is not None else float('-inf')
         self.random_feature_selection = random_feature_selection
@@ -689,32 +694,54 @@ class DecisionTree(Model):
 
     def _compute_aggregate_impurity(self, list_of_labels_sr):
         total_labels = 0
-        for labels_sr in list_of_labels_sr:
-            total_labels += labels_sr.count()
         aggregate_impurity = 0
         for labels_sr in list_of_labels_sr:
             count = labels_sr.count()
-            if count > 0:
+            total_labels += count
+            if count > 1:
                 impurity = self._compute_impurity(labels_sr)
-                if math.isnan(impurity):
-                    impurity = 0
-                aggregate_impurity += count * impurity / total_labels
-        return aggregate_impurity
+                aggregate_impurity += count * impurity
+        return aggregate_impurity / total_labels
 
-    def _build_tree(self, observations_df, labels_sr, features, depth):
-        # Instantiate the node and calculate its value.
-        node = self.DecisionTreeNode()
-        node.value = self._compute_leaf_node_value(labels_sr)
-        # Check termination conditions.
-        if len(features) == 0 or labels_sr.count() <= self.min_observations:
-            return node
-        if self.max_depth is not None and depth >= self.max_depth:
-            return node
-        current_impurity = self._compute_impurity(labels_sr)
-        if current_impurity <= self.min_impurity:
-            return node
-        # Select the best feature to split by.
+    def _test_categorical_split(self, column_sr, labels_sr):
+        impurity = None
+        indices_by_feature_value = None
+        unique_values = column_sr.unique()
+        if len(unique_values) > 1:
+            list_of_labels_sr = []
+            indices_by_feature_value = {}
+            for value in unique_values:
+                indices = column_sr[column_sr == value].index
+                indices_by_feature_value[value] = indices
+                list_of_labels_sr.append(labels_sr.reindex(indices))
+            impurity = self._compute_aggregate_impurity(list_of_labels_sr)
+        return impurity, indices_by_feature_value
+
+    def _test_continuous_split(self, column_sr, labels_sr):
+        impurity = None
+        indices_by_feature_value = None
+        sorted_column_sr = column_sr.sort_values()
+        sorted_labels_sr = labels_sr.reindex(sorted_column_sr.index)
+        for ind, value in enumerate(sorted_column_sr):
+            if ind < len(sorted_column_sr) - 1:
+                label = sorted_labels_sr.iat[ind]
+                next_ind = ind + 1
+                next_value = sorted_column_sr.iat[next_ind]
+                next_label = sorted_labels_sr.iat[next_ind]
+                if value == next_value or label == next_label:
+                    continue
+                list_of_labels_sr = [sorted_labels_sr.iloc[:next_ind], sorted_labels_sr.iloc[next_ind:]]
+                split_point_impurity = self._compute_aggregate_impurity(list_of_labels_sr)
+                if impurity is None or split_point_impurity < impurity:
+                    impurity = split_point_impurity
+                    split_point = (value + next_value) / 2
+                    indices_by_feature_value = {split_point: sorted_column_sr.index[next_ind:],
+                                                None: sorted_column_sr.index[:next_ind]}
+        return impurity, indices_by_feature_value
+
+    def _select_split(self, observations_df, labels_sr, features):
         best_feature = None
+        best_feature_categorical = None
         best_indices_by_feature_value = None
         best_impurity = None
         if self.random_feature_selection:
@@ -725,53 +752,58 @@ class DecisionTree(Model):
         for i, feature in enumerate(features):
             if self.random_feature_selection and i not in features_to_consider:
                 continue
+            feature_categorical = False
             column_sr = observations_df[feature]
-            indices_by_feature_value = {}
-            uniques = column_sr.unique()
-            # If all the observations have the same value for the selected feature, we cannot split by it.
-            if len(uniques) == 1:
-                continue
-            impurity = None
             if _is_categorical(column_sr.dtype):
-                list_of_labels_sr = []
-                for value in uniques:
-                    indices = column_sr[column_sr == value].index
-                    indices_by_feature_value[value] = indices
-                    list_of_labels_sr.append(labels_sr.reindex(indices))
-                impurity = self._compute_aggregate_impurity(list_of_labels_sr)
+                feature_categorical = True
+                impurity, indices_by_feature_value = self._test_categorical_split(column_sr, labels_sr)
             elif _is_continuous(column_sr.dtype):
-                uniques.sort()
-                for j, value in enumerate(uniques):
-                    if j < len(uniques) - 1:
-                        split_point = (value + uniques[j + 1]) / 2
-                        ge_split_indices = column_sr[column_sr >= split_point].index
-                        l_split_indices = column_sr[column_sr < split_point].index
-                        list_of_labels_sr = [labels_sr.reindex(ge_split_indices), labels_sr.reindex(l_split_indices)]
-                        split_point_impurity = self._compute_aggregate_impurity(list_of_labels_sr)
-                        if impurity is None or split_point_impurity < impurity:
-                            indices_by_feature_value = {split_point: ge_split_indices, None: l_split_indices}
-                            impurity = split_point_impurity
+                impurity, indices_by_feature_value = self._test_continuous_split(column_sr, labels_sr)
             else:
                 raise ValueError
+            # If all the observations have the same value for the selected feature, we cannot split by it.
+            if impurity is None:
+                continue
             if best_impurity is None or impurity < best_impurity:
                 best_feature = feature
+                best_feature_categorical = feature_categorical
                 best_indices_by_feature_value = indices_by_feature_value
                 best_impurity = impurity
-        # Check split metric reduction termination condition (and whether any split points could be established at all).
-        if best_impurity is None or current_impurity - best_impurity <= self.min_impurity_reduction:
+        return best_feature, best_feature_categorical, best_indices_by_feature_value, best_impurity
+
+    def _build_tree(self, observations_df, labels_sr, features, depth):
+        # Instantiate the node and calculate its value.
+        node = self.DecisionTreeNode()
+        node.value = self._compute_leaf_node_value(labels_sr)
+        node.instances = labels_sr.count()
+        # Check termination conditions.
+        if len(features) == 0 or node.instances <= self.min_observations:
             return node
+        if self.max_depth is not None and depth >= self.max_depth:
+            return node
+        node.impurity = self._compute_impurity(labels_sr)
+        if node.impurity <= self.min_impurity:
+            return node
+        # Select the best feature to split by.
+        best_feature, best_feature_categorical, best_indices_by_feature_value, best_impurity = \
+            self._select_split(observations_df, labels_sr, features)
+        # Check split metric reduction termination condition (and whether any split points could be established at all).
+        if best_impurity is None or node.impurity - best_impurity <= self.min_impurity_reduction:
+            return node
+        # If the best feature is categorical, remove it from the list of available features
+        if best_feature_categorical:
+            features.remove(best_feature)
         # Split the observations and the labels and recurse to build the child nodes and their sub-trees.
-        features.remove(best_feature)
         node.feature = best_feature
         node.children_by_feature_value = {}
         for key, value in best_indices_by_feature_value.items():
-            if len(value) == 0:
-                child = self.DecisionTreeNode()
-                child.value = node.value
-            else:
-                child = self._build_tree(observations_df.reindex(value), labels_sr.reindex(value), features, depth + 1)
+            instances = len(value)
+            if instances == 0:
+                continue
+            child = self._build_tree(observations_df.reindex(value), labels_sr.reindex(value), features, depth + 1)
             node.children_by_feature_value[key] = child
-        features.append(best_feature)
+        if best_feature_categorical:
+            features.append(best_feature)
         return node
 
     def _fit(self, observations_df, labels_sr):
@@ -783,7 +815,7 @@ class DecisionTree(Model):
         for i, row in observations_df.iterrows():
             node = self._root
             terminate_early = False
-            while not terminate_early and node.feature is not None:
+            while node.feature is not None and not terminate_early:
                 feature_value = row[node.feature]
                 feature_type = observations_df[node.feature].dtype
                 if _is_categorical(feature_type):
@@ -809,13 +841,15 @@ class DecisionTree(Model):
         """A class representing a decision tree node."""
         def __init__(self):
             self.value = None
+            self.instances = None
+            self.impurity = None
             self.feature = None
             self.children_by_feature_value = None
 
 
 class DecisionTreeClassification(DecisionTree, ClassificationModel):
     """A decision tree classifier model."""
-    def __init__(self, max_depth=None, min_observations=2, min_entropy=1e-5, min_info_gain=0.,
+    def __init__(self, max_depth=None, min_observations=1, min_entropy=1e-5, min_info_gain=0.,
                  random_feature_selection=False, feature_sample_size_function=math.sqrt):
         DecisionTree.__init__(self, max_depth, min_observations, min_entropy, min_info_gain, random_feature_selection,
                               feature_sample_size_function)
@@ -841,14 +875,14 @@ class DecisionTreeClassification(DecisionTree, ClassificationModel):
 
 class DecisionTreeRegression(DecisionTree, RegressionModel):
     """A decision tree classifier model."""
-    def __init__(self, max_depth=None, min_observations=2, min_variance=1e-5, min_variance_reduction=0.,
+    def __init__(self, max_depth=None, min_observations=1, min_variance=1e-5, min_variance_reduction=0.,
                  random_feature_selection=False, feature_sample_size_function=math.sqrt):
         DecisionTree.__init__(self, max_depth, min_observations, min_variance, min_variance_reduction,
                               random_feature_selection, feature_sample_size_function)
         RegressionModel.__init__(self)
 
     def _compute_impurity(self, labels_sr):
-        # Variance.
+        # Variance (i.e. MSE).
         return labels_sr.var()
 
     def _compute_leaf_node_value(self, labels_sr):
@@ -1120,7 +1154,7 @@ class GradientBoostingRegression(GradientBoosting, RegressionModel):
 
 class BaggedTreesClassification(BootstrapAggregatingClassification):
     """A bagged trees classification model."""
-    def __init__(self, number_of_models, sample_size_function=None, max_depth=None, min_observations=2,
+    def __init__(self, number_of_models, sample_size_function=None, max_depth=None, min_observations=1,
                  min_entropy=1e-5, min_info_gain=0., number_of_processes=mp.cpu_count()):
         super(BaggedTreesClassification, self)\
             .__init__(DecisionTreeClassification(max_depth=max_depth, min_observations=min_observations,
@@ -1131,7 +1165,7 @@ class BaggedTreesClassification(BootstrapAggregatingClassification):
 
 class BaggedTreesRegression(BootstrapAggregatingRegression):
     """A bagged trees regression model."""
-    def __init__(self, number_of_models, sample_size_function=None, max_depth=None, min_observations=2,
+    def __init__(self, number_of_models, sample_size_function=None, max_depth=None, min_observations=1,
                  min_variance=1e-5, min_variance_reduction=0., number_of_processes=mp.cpu_count()):
         super(BaggedTreesRegression, self)\
             .__init__(DecisionTreeRegression(max_depth=max_depth, min_observations=min_observations,
@@ -1142,7 +1176,7 @@ class BaggedTreesRegression(BootstrapAggregatingRegression):
 
 class RandomForestClassification(BootstrapAggregatingClassification):
     """A random forest classification model."""
-    def __init__(self, number_of_models, sample_size_function=None, max_depth=None, min_observations=2,
+    def __init__(self, number_of_models, sample_size_function=None, max_depth=None, min_observations=1,
                  min_entropy=1e-5, min_info_gain=0., feature_sample_size_function=math.sqrt,
                  number_of_processes=mp.cpu_count()):
         super(RandomForestClassification, self)\
@@ -1155,7 +1189,7 @@ class RandomForestClassification(BootstrapAggregatingClassification):
 
 class RandomForestRegression(BootstrapAggregatingRegression):
     """A random forest regression model."""
-    def __init__(self, number_of_models, sample_size_function=None, max_depth=None, min_observations=2,
+    def __init__(self, number_of_models, sample_size_function=None, max_depth=None, min_observations=1,
                  min_variance=1e-5, min_variance_reduction=0., feature_sample_size_function=math.sqrt,
                  number_of_processes=mp.cpu_count()):
         super(RandomForestRegression, self)\
@@ -1168,7 +1202,7 @@ class RandomForestRegression(BootstrapAggregatingRegression):
 
 class BoostedTreesBinaryClassification(GradientBoostingBinaryClassification):
     """A gradient boosting binary classification model using regression decision trees."""
-    def __init__(self, number_of_models, max_depth=None, min_observations=2, min_variance=0., min_variance_reduction=0.,
+    def __init__(self, number_of_models, max_depth=None, min_observations=1, min_variance=0., min_variance_reduction=0.,
                  random_feature_selection=False, feature_sample_size_function=math.sqrt, sampling_factor=1.,
                  min_gradient=1e-7, max_step_size=1000., step_size_decay_factor=.7, armijo_factor=.7):
         super(BoostedTreesBinaryClassification, self)\
@@ -1182,7 +1216,7 @@ class BoostedTreesBinaryClassification(GradientBoostingBinaryClassification):
 
 class BoostedTreesClassification(MultiBinaryClassification):
     """A gradient boosting multinomial classification model using regression decision trees."""
-    def __init__(self, number_of_models, number_of_processes, max_depth=None, min_observations=2, min_variance=0.,
+    def __init__(self, number_of_models, number_of_processes, max_depth=None, min_observations=1, min_variance=0.,
                  min_variance_reduction=0., random_feature_selection=False, feature_sample_size_function=math.sqrt,
                  sampling_factor=1., min_gradient=1e-7, max_step_size=1000., step_size_decay_factor=.7,
                  armijo_factor=.7):
@@ -1196,10 +1230,9 @@ class BoostedTreesClassification(MultiBinaryClassification):
 
 class BoostedTreesRegression(GradientBoostingRegression):
     """A gradient boosting regression model using regression decision trees."""
-    def __init__(self, number_of_models, max_depth=None, min_observations=2,
-                 min_variance=0., min_variance_reduction=0., random_feature_selection=False,
-                 feature_sample_size_function=math.sqrt, sampling_factor=1., min_gradient=1e-7, max_step_size=1000.,
-                 step_size_decay_factor=.7, armijo_factor=.7):
+    def __init__(self, number_of_models, max_depth=None, min_observations=1, min_variance=0., min_variance_reduction=0.,
+                 random_feature_selection=False, feature_sample_size_function=math.sqrt, sampling_factor=1.,
+                 min_gradient=1e-7, max_step_size=1000., step_size_decay_factor=.7, armijo_factor=.7):
         super(BoostedTreesRegression, self)\
             .__init__(DecisionTreeRegression(max_depth=max_depth, min_observations=min_observations,
                                              min_variance=min_variance, min_variance_reduction=min_variance_reduction,
