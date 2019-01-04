@@ -56,9 +56,7 @@ def test_regression_model_error(data_set, model, max_error):
         base_binary_classifier=osmlm.LogisticRegression(iterations=100), number_of_processes=3), .8),
     (osmld.IrisDataSet('data/iris/iris.csv'), osmlm.BaggedTreesClassification(number_of_models=10), .8),
     (osmld.IrisDataSet('data/iris/iris.csv'), osmlm.RandomForestClassification(number_of_models=10), .8),
-    (osmld.IMDBDataSet('data/imdb/ratings.csv'), osmlm.RandomForestClassification(number_of_models=16), .15),
-    (osmld.IrisDataSet('data/iris/iris.csv'), osmlm.BoostedTreesClassification(number_of_models=8,
-                                                                               number_of_processes=3), .8)
+    (osmld.IMDBDataSet('data/imdb/ratings.csv'), osmlm.RandomForestClassification(number_of_models=16), .15)
 ])
 def test_classification_accuracy(data_set, model, min_accuracy):
     model.fit(data_set.get_training_observations(), data_set.get_training_labels())
