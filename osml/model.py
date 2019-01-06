@@ -10,7 +10,9 @@ import typing
 
 
 class Model:
-    """An abstract class representing a statistical model or machine learning algorithm."""
+    """
+    An abstract class representing a statistical model or machine learning algorithm.
+    """
     def __init__(self, epsilon=1e-8):
         if epsilon is None or epsilon <= 0:
             raise ValueError
@@ -49,7 +51,8 @@ class Model:
         pass
 
     def fit(self, observations_df, labels_sr):
-        """Fits the model to the data.
+        """
+        Fits the model to the data.
 
         It learns a model to map observations to labels from the provided data.
 
@@ -68,7 +71,8 @@ class Model:
         return self._fit(observations_df, labels_sr)
 
     def predict(self, observations_df):
-        """Predicts the labels of the observations.
+        """
+        Predicts the labels of the observations.
 
         Args:
             observations_df: A 2D frame of data points where each column is a feature and each row is an observation.
@@ -86,7 +90,8 @@ class Model:
         return predictions_sr
 
     def evaluate(self, predictions_sr, labels_sr):
-        """A function for evaluating the model's predictions according to some arbitrary metric.
+        """
+        A function for evaluating the model's predictions according to some arbitrary metric.
 
         Args:
             predictions_sr: A series of predictions.
@@ -108,7 +113,8 @@ class Model:
         return self._evaluate(predictions_sr, labels_sr)
 
     def test(self, observations_df, labels_sr):
-        """Computes the prediction error of the model on a test data set in terms of the function the model minimizes.
+        """
+        Computes the prediction error of the model on a test data set in terms of the function the model minimizes.
         It is not applicable to models that do not optimize a well-defined loss function.
 
         Args:
@@ -128,7 +134,8 @@ class Model:
 
 
 def save(model, file_path):
-    """It serializes the model into a binary format and writes it to the specified file path.
+    """
+    It serializes the model into a binary format and writes it to the specified file path.
 
     Args:
         model: The model to serialize.
@@ -139,7 +146,8 @@ def save(model, file_path):
 
 
 def load(file_path):
-    """It reads a binary file and deserializes a model from its contents.
+    """
+    It reads a binary file and deserializes a model from its contents.
 
     Args:
         file_path: The path to the file containing the serialized model.
@@ -160,7 +168,9 @@ def _is_categorical(data_type):
 
 
 class RegressionModel(Model):
-    """An abstract base class for regression models."""
+    """
+    An abstract base class for regression models.
+    """
     def __init__(self):
         super(RegressionModel, self).__init__()
 
@@ -175,7 +185,9 @@ class RegressionModel(Model):
 
 
 class ClassificationModel(Model):
-    """An abstract base class for classification models."""
+    """
+    An abstract base class for classification models.
+    """
     def __init__(self):
         super(ClassificationModel, self).__init__()
 
@@ -190,7 +202,9 @@ class ClassificationModel(Model):
 
 
 class BinaryClassificationModel(Model):
-    """An abstract base class for binary classification models."""
+    """
+    An abstract base class for binary classification models.
+    """
     def __init__(self):
         super(BinaryClassificationModel, self).__init__()
 
@@ -212,7 +226,8 @@ class BinaryClassificationModel(Model):
         return 2 * precision * recall / (precision + recall)
 
     def predict_probabilities(self, observations_df):
-        """Predicts the probabilities of the observations belonging to the positive class.
+        """
+        Predicts the probabilities of the observations belonging to the positive class.
 
         Args:
             observations_df: A 2D frame of data points where each column is a feature and each row is an observation.
@@ -228,7 +243,8 @@ class BinaryClassificationModel(Model):
         return pd.Series(self._predict_probabilities(observations_df), dtype=np.float_)
 
     def evaluate_precision(self, predictions_sr, labels_sr):
-        """Evaluates the precision of the predictions (true positive predictions / all positive predictions).
+        """
+        Evaluates the precision of the predictions (true positive predictions / all positive predictions).
 
         Args:
             predictions_sr: A series of predictions.
@@ -251,7 +267,8 @@ class BinaryClassificationModel(Model):
         return float(n_true_pos_predictions) / n_pos_predictions
 
     def evaluate_recall(self, predictions_sr, labels_sr):
-        """Evaluates the recall of the predictions (true positive predictions / all positives).
+        """
+        Evaluates the recall of the predictions (true positive predictions / all positives).
 
         Args:
             predictions_sr: A series of predictions.
@@ -282,7 +299,9 @@ def _bias_trick(observations_df):
 
 
 class LinearRegression(RegressionModel):
-    """A linear regression model fitted using ordinary least squares."""
+    """
+    A linear regression model fitted using ordinary least squares.
+    """
     def __init__(self):
         super(LinearRegression, self).__init__()
         self._beta = None
@@ -305,7 +324,9 @@ class LinearRegression(RegressionModel):
 
 
 class LinearRidgeRegression(LinearRegression):
-    """A linear ridge regression model fitted using ordinary least squares."""
+    """
+    A linear ridge regression model fitted using ordinary least squares.
+    """
     def __init__(self, alpha=1e-2):
         super(LinearRidgeRegression, self).__init__()
         if alpha is None or alpha < 0:
@@ -324,7 +345,9 @@ class LinearRidgeRegression(LinearRegression):
 
 
 class LinearLassoRegression(LinearRegression):
-    """A Least Absolute Shrinkage and Selection Operator regression model fitted using coordinate descent."""
+    """
+    A Least Absolute Shrinkage and Selection Operator regression model fitted using coordinate descent.
+    """
     def __init__(self, alpha=1e-2, iterations=100):
         super(LinearLassoRegression, self).__init__()
         if alpha is None or alpha < 0:
@@ -376,7 +399,9 @@ def _logistic_function(x):
 
 
 class LogisticRegression(BinaryClassificationModel):
-    """A logistic regression model fitted using the Newton-Raphson method."""
+    """
+    A logistic regression model fitted using the Newton-Raphson method.
+    """
     def __init__(self, iterations=100, min_gradient=1e-7):
         super(LogisticRegression, self).__init__()
         if iterations is None or iterations < 1:
@@ -420,7 +445,9 @@ class LogisticRegression(BinaryClassificationModel):
 
 
 class LogisticRidgeRegression(LogisticRegression):
-    """A logistic regression model with L2 regularization."""
+    """
+    A logistic regression model with L2 regularization.
+    """
     def __init__(self, iterations=100, min_gradient=1e-7, alpha=1e-2):
         super(LogisticRidgeRegression, self).__init__(iterations, min_gradient)
         if alpha is None or alpha < 0:
@@ -439,7 +466,9 @@ class LogisticRidgeRegression(LogisticRegression):
 
 
 class NaiveBayes(ClassificationModel):
-    """A naive Bayes multi-nomial classification model."""
+    """
+    A naive Bayes classification model.
+    """
     def __init__(self, laplace_smoothing=1.):
         super(NaiveBayes, self).__init__()
         if laplace_smoothing is None or laplace_smoothing < 0:
@@ -467,7 +496,7 @@ class NaiveBayes(ClassificationModel):
                 raise ValueError
 
     def _predict(self, observations_df):
-        predictions = np.zeros((len(observations_df.index)), )
+        predictions = np.zeros((len(observations_df.index)))
         for i, row in enumerate(observations_df.itertuples()):
             highest_class_probability = -1
             prediction = None
@@ -490,9 +519,12 @@ class NaiveBayes(ClassificationModel):
         return None
 
     class FeatureStatistics:
-        """An abstract base class for feature statistics."""
+        """
+        An abstract base class for feature statistics.
+        """
         def get_probability(self, value):
-            """A function that returns the probability of the feature taking on the specified value.
+            """
+            A function that returns the probability of the feature taking on the specified value.
 
             Args:
                 value: The value whose probability is to be established.
@@ -503,7 +535,8 @@ class NaiveBayes(ClassificationModel):
             pass
 
         def get_likelihood(self, value, label_value):
-            """A function that returns the probability of the feature having the specified value given the specified
+            """
+            A function that returns the probability of the feature having the specified value given the specified
             label value.
 
             Args:
@@ -516,7 +549,9 @@ class NaiveBayes(ClassificationModel):
             pass
 
     class ContinuousFeatureStatistics:
-        """A class for continuous feature statistics."""
+        """
+        A class for continuous feature statistics.
+        """
         def __init__(self, values_sr, indices_by_label):
             self.mean = values_sr.mean()
             self.variance = values_sr.var()
@@ -538,7 +573,9 @@ class NaiveBayes(ClassificationModel):
             return self.calculate_probability(value, mean_and_variance_tuple[0], mean_and_variance_tuple[1])
 
     class CategoricalFeatureStatistics:
-        """A class for categorical feature statistics."""
+        """
+        A class for categorical feature statistics.
+        """
         def __init__(self, values_sr, indices_by_label, laplace_smoothing):
             self.laplace_smoothing = laplace_smoothing
             self.value_counts = values_sr.value_counts()
@@ -563,10 +600,116 @@ class NaiveBayes(ClassificationModel):
             return self.calculate_probability(value, likelihood_tuple[0], likelihood_tuple[1], self.laplace_smoothing)
 
 
-class KNearestNeighbors(Model):
-    """An abstract weighted k-nearest neighbors model.
+class DiscriminantAnalysis(ClassificationModel):
+    """
+    A discriminant analysis classification model base class.
 
-    See: https://epub.ub.uni-muenchen.de/1769/1/paper_399.pdf
+    https://web.stanford.edu/class/stats202/content/lec9.pdf
+    """
+    def __init__(self):
+        super(DiscriminantAnalysis, self).__init__()
+        self._classes = None
+        self._class_priors = None
+        self._mean_by_class = None
+        self._inverse_covariance_matrix_by_class = None
+        self._inverse_common_covariance_matrix = None
+
+    def _set_covariance_estimates(self, covariance_matrix: np.array, klass: str, n_observations: int):
+        pass
+
+    def _finalize_covariance_estimates(self, total_n_observations: int):
+        pass
+
+    def _calculate_relative_probability(self, observation_sr: pd.Series, klass: str) -> float:
+        pass
+
+    def _fit(self, observations_df, labels_sr):
+        total_n_observations = len(observations_df.index)
+        n_features = len(observations_df.columns)
+        self._classes = labels_sr.unique()
+        self._class_priors = labels_sr.value_counts().astype(np.float_) / labels_sr.count()
+        self._mean_by_class = {}
+        self._inverse_covariance_matrix_by_class = {}
+        self._inverse_common_covariance_matrix = np.zeros((n_features, n_features))
+        for klass in self._classes:
+            respective_observations_df = observations_df.reindex(labels_sr[labels_sr == klass].index)
+            n_observations = len(respective_observations_df.index)
+            class_mean = respective_observations_df.mean(axis=0).values
+            self._mean_by_class[klass] = class_mean
+            class_deviance = respective_observations_df.values - class_mean
+            class_covariance_matrix = np.dot(class_deviance.transpose(), class_deviance)
+            self._set_covariance_estimates(class_covariance_matrix, klass, n_observations)
+        self._finalize_covariance_estimates(total_n_observations)
+
+    def _predict(self, observations_df):
+        predictions = np.zeros((len(observations_df.index)))
+        for i, row in observations_df.iterrows():
+            highest_relative_probability = None
+            prediction = None
+            for klass in self._classes:
+                relative_probability = self._calculate_relative_probability(row, klass)
+                if highest_relative_probability is None or relative_probability > highest_relative_probability:
+                    highest_relative_probability = relative_probability
+                    prediction = klass
+            predictions[i] = prediction
+        return predictions
+
+    def _test(self, observations_df, labels_sr):
+        return None
+
+
+class LinearDiscriminantAnalysis(DiscriminantAnalysis):
+    """
+    A linear discriminant analysis classification model.
+    """
+    def __init__(self):
+        super(LinearDiscriminantAnalysis, self).__init__()
+        self._inverse_common_covariance_matrix = None
+
+    def _set_covariance_estimates(self, covariance_matrix, klass, n_observations):
+        if self._inverse_common_covariance_matrix is None:
+            self._inverse_common_covariance_matrix = covariance_matrix
+        else:
+            self._inverse_common_covariance_matrix += covariance_matrix
+
+    def _finalize_covariance_estimates(self, total_n_observations):
+        self._inverse_common_covariance_matrix = np.linalg.inv(self._inverse_common_covariance_matrix /
+                                                               (total_n_observations - len(self._classes)))
+
+    def _calculate_relative_probability(self, observation_sr, klass):
+        mean = self._mean_by_class[klass]
+        return np.log(self._class_priors[klass]) - \
+            .5 * np.dot(np.dot(mean, self._inverse_common_covariance_matrix), mean.transpose()) + \
+            np.dot(np.dot(observation_sr.values, self._inverse_common_covariance_matrix), mean.transpose())
+
+
+class QuadraticDiscriminantAnalysis(DiscriminantAnalysis):
+    """
+    A quadratic discriminant analysis classification model.
+    """
+    def __init__(self):
+        super(QuadraticDiscriminantAnalysis, self).__init__()
+        self._inverse_covariance_matrix_by_class = None
+
+    def _set_covariance_estimates(self, covariance_matrix, klass, n_observations):
+        self._inverse_covariance_matrix_by_class[klass] = np.linalg.inv(covariance_matrix / (n_observations - 1))
+
+    def _calculate_relative_probability(self, observation_sr, klass):
+        observation = observation_sr.values
+        mean = self._mean_by_class[klass]
+        inverse_covariance_matrix = self._inverse_covariance_matrix_by_class[klass]
+        return np.log(self._class_priors[klass]) - \
+            .5 * np.dot(np.dot(mean, inverse_covariance_matrix), mean.transpose()) + \
+            np.dot(np.dot(observation, inverse_covariance_matrix), mean.transpose()) - \
+            .5 * (np.dot(np.dot(observation, inverse_covariance_matrix), observation.transpose()) -
+                  np.log(np.linalg.det(np.linalg.inv(inverse_covariance_matrix))))
+
+
+class KNearestNeighbors(Model):
+    """
+    An abstract weighted k-nearest neighbors model.
+
+    https://epub.ub.uni-muenchen.de/1769/1/paper_399.pdf
     """
     def __init__(self, k, rbf_gamma, standardize):
         super(KNearestNeighbors, self).__init__()
@@ -631,7 +774,9 @@ class KNearestNeighbors(Model):
 
 
 class KNearestNeighborsRegression(KNearestNeighbors, RegressionModel):
-    """A weighted k-nearest neighbors regression model."""
+    """
+    A weighted k-nearest neighbors regression model.
+    """
     def __init__(self, k=7, rbf_gamma=1, standardize=True):
         KNearestNeighbors.__init__(self, k, rbf_gamma, standardize)
         RegressionModel.__init__(self)
@@ -649,7 +794,9 @@ class KNearestNeighborsRegression(KNearestNeighbors, RegressionModel):
 
 
 class KNearestNeighborsClassification(KNearestNeighbors, ClassificationModel):
-    """A weighted k-nearest neighbors classification model."""
+    """
+    A weighted k-nearest neighbors classification model.
+    """
     def __init__(self, k=7, rbf_gamma=1, standardize=True):
         KNearestNeighbors.__init__(self, k, rbf_gamma, standardize)
         ClassificationModel.__init__(self)
@@ -668,7 +815,9 @@ def _identity_function(x):
 
 
 class DecisionTree(Model):
-    """An abstract decision tree base class."""
+    """
+    An abstract decision tree base class.
+    """
     def __init__(self, max_depth, min_observations, min_impurity, min_impurity_reduction, random_feature_selection,
                  feature_sample_size_function):
         super(DecisionTree, self).__init__()
@@ -838,7 +987,9 @@ class DecisionTree(Model):
         return None
 
     class DecisionTreeNode:
-        """A class representing a decision tree node."""
+        """
+        A class representing a decision tree node.
+        """
         def __init__(self):
             self.value = None
             self.instances = None
@@ -848,7 +999,9 @@ class DecisionTree(Model):
 
 
 class DecisionTreeClassification(DecisionTree, ClassificationModel):
-    """A decision tree classifier model."""
+    """
+    A decision tree classifier model.
+    """
     def __init__(self, max_depth=None, min_observations=1, min_entropy=1e-5, min_info_gain=0.,
                  random_feature_selection=False, feature_sample_size_function=math.sqrt):
         DecisionTree.__init__(self, max_depth, min_observations, min_entropy, min_info_gain, random_feature_selection,
@@ -874,7 +1027,9 @@ class DecisionTreeClassification(DecisionTree, ClassificationModel):
 
 
 class DecisionTreeRegression(DecisionTree, RegressionModel):
-    """A decision tree classifier model."""
+    """
+    A decision tree classifier model.
+    """
     def __init__(self, max_depth=None, min_observations=1, min_variance=1e-5, min_variance_reduction=0.,
                  random_feature_selection=False, feature_sample_size_function=math.sqrt):
         DecisionTree.__init__(self, max_depth, min_observations, min_variance, min_variance_reduction,
@@ -890,12 +1045,16 @@ class DecisionTreeRegression(DecisionTree, RegressionModel):
 
 
 class SupportVectorMachine(BinaryClassificationModel):
-    """A support vector machine binary classifier model"""
+    """
+    A support vector machine binary classifier model.
+    """
     pass
 
 
 class MultiBinaryClassification(ClassificationModel):
-    """A meta model that uses multiple binary classifiers for multi-class classification."""
+    """
+    A meta model that uses multiple binary classifiers for multi-class classification.
+    """
     def __init__(self, base_binary_classifier, number_of_processes=1):
         super(MultiBinaryClassification, self).__init__()
         if not isinstance(base_binary_classifier, BinaryClassificationModel):
@@ -948,7 +1107,9 @@ class MultiBinaryClassification(ClassificationModel):
 
 
 class BootstrapAggregating(Model):
-    """A meta model that trains multiple models on random subsets of the training data set sampled with replacement."""
+    """
+    A meta model that trains multiple models on random subsets of the training data set sampled with replacement.
+    """
     def __init__(self, base_model, number_of_models, sample_size_function, number_of_processes):
         if base_model is None or not isinstance(base_model, Model):
             raise ValueError
@@ -1007,7 +1168,9 @@ class BootstrapAggregating(Model):
 
 
 class BootstrapAggregatingClassification(BootstrapAggregating, ClassificationModel):
-    """A bootstrap aggregating classification meta model."""
+    """
+    A bootstrap aggregating classification meta model.
+    """
     def __init__(self, base_model, number_of_models, sample_size_function=None, number_of_processes=mp.cpu_count()):
         if not isinstance(base_model, ClassificationModel):
             raise ValueError
@@ -1020,7 +1183,9 @@ class BootstrapAggregatingClassification(BootstrapAggregating, ClassificationMod
 
 
 class BootstrapAggregatingRegression(BootstrapAggregating, RegressionModel):
-    """A bootstrap aggregating regression meta model."""
+    """
+    A bootstrap aggregating regression meta model.
+    """
     def __init__(self, base_model, number_of_models, sample_size_function=None, number_of_processes=mp.cpu_count()):
         if not isinstance(base_model, RegressionModel):
             raise ValueError
@@ -1032,7 +1197,9 @@ class BootstrapAggregatingRegression(BootstrapAggregating, RegressionModel):
 
 
 class GradientBoosting(Model):
-    """A gradient boosting abstract meta model class."""
+    """
+    A gradient boosting abstract meta model class.
+    """
     def __init__(self, base_model, number_of_models, sampling_factor, min_gradient, max_step_size,
                  step_size_decay_factor, armijo_factor):
         super(GradientBoosting, self).__init__()
@@ -1112,7 +1279,9 @@ class GradientBoosting(Model):
 
 
 class GradientBoostingBinaryClassification(GradientBoosting, BinaryClassificationModel):
-    """A gradient boosting binary classification meta model minimizing the log loss function."""
+    """
+    A gradient boosting binary classification meta model minimizing the log loss function.
+    """
     def __init__(self, base_model, number_of_models, sampling_factor=1., min_gradient=1e-7, max_step_size=1000.,
                  step_size_decay_factor=.7, armijo_factor=.7):
         GradientBoosting.__init__(self, base_model, number_of_models, sampling_factor, min_gradient, max_step_size,
@@ -1134,7 +1303,9 @@ class GradientBoostingBinaryClassification(GradientBoosting, BinaryClassificatio
 
 
 class GradientBoostingRegression(GradientBoosting, RegressionModel):
-    """A gradient boosting regression meta model minimizing the MSE loss function."""
+    """
+    A gradient boosting regression meta model minimizing the MSE loss function.
+    """
     def __init__(self, base_model, number_of_models, sampling_factor=1., min_gradient=1e-7, max_step_size=1000.,
                  step_size_decay_factor=.7, armijo_factor=.7):
         GradientBoosting.__init__(self, base_model, number_of_models, sampling_factor, min_gradient, max_step_size,
@@ -1153,7 +1324,9 @@ class GradientBoostingRegression(GradientBoosting, RegressionModel):
 
 
 class BaggedTreesClassification(BootstrapAggregatingClassification):
-    """A bagged trees classification model."""
+    """
+    A bagged trees classification model.
+    """
     def __init__(self, number_of_models, sample_size_function=None, max_depth=None, min_observations=1,
                  min_entropy=1e-5, min_info_gain=0., number_of_processes=mp.cpu_count()):
         super(BaggedTreesClassification, self)\
@@ -1164,7 +1337,9 @@ class BaggedTreesClassification(BootstrapAggregatingClassification):
 
 
 class BaggedTreesRegression(BootstrapAggregatingRegression):
-    """A bagged trees regression model."""
+    """
+    A bagged trees regression model.
+    """
     def __init__(self, number_of_models, sample_size_function=None, max_depth=None, min_observations=1,
                  min_variance=1e-5, min_variance_reduction=0., number_of_processes=mp.cpu_count()):
         super(BaggedTreesRegression, self)\
@@ -1175,7 +1350,9 @@ class BaggedTreesRegression(BootstrapAggregatingRegression):
 
 
 class RandomForestClassification(BootstrapAggregatingClassification):
-    """A random forest classification model."""
+    """
+    A random forest classification model.
+    """
     def __init__(self, number_of_models, sample_size_function=None, max_depth=None, min_observations=1,
                  min_entropy=1e-5, min_info_gain=0., feature_sample_size_function=math.sqrt,
                  number_of_processes=mp.cpu_count()):
@@ -1188,7 +1365,9 @@ class RandomForestClassification(BootstrapAggregatingClassification):
 
 
 class RandomForestRegression(BootstrapAggregatingRegression):
-    """A random forest regression model."""
+    """
+    A random forest regression model.
+    """
     def __init__(self, number_of_models, sample_size_function=None, max_depth=None, min_observations=1,
                  min_variance=1e-5, min_variance_reduction=0., feature_sample_size_function=math.sqrt,
                  number_of_processes=mp.cpu_count()):
@@ -1201,7 +1380,9 @@ class RandomForestRegression(BootstrapAggregatingRegression):
 
 
 class BoostedTreesBinaryClassification(GradientBoostingBinaryClassification):
-    """A gradient boosting binary classification model using regression decision trees."""
+    """
+    A gradient boosting binary classification model using regression decision trees.
+    """
     def __init__(self, number_of_models, max_depth=None, min_observations=1, min_variance=0., min_variance_reduction=0.,
                  random_feature_selection=False, feature_sample_size_function=math.sqrt, sampling_factor=1.,
                  min_gradient=1e-7, max_step_size=1000., step_size_decay_factor=.7, armijo_factor=.7):
@@ -1215,7 +1396,9 @@ class BoostedTreesBinaryClassification(GradientBoostingBinaryClassification):
 
 
 class BoostedTreesRegression(GradientBoostingRegression):
-    """A gradient boosting regression model using regression decision trees."""
+    """
+    A gradient boosting regression model using regression decision trees.
+    """
     def __init__(self, number_of_models, max_depth=None, min_observations=1, min_variance=0., min_variance_reduction=0.,
                  random_feature_selection=False, feature_sample_size_function=math.sqrt, sampling_factor=1.,
                  min_gradient=1e-7, max_step_size=1000., step_size_decay_factor=.7, armijo_factor=.7):

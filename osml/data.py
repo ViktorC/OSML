@@ -4,9 +4,12 @@ import pandas as pd
 
 
 class DataSet:
-    """An abstract class representing a data set."""
+    """
+    An abstract class representing a data set.
+    """
     def get_training_observations(self) -> pd.DataFrame:
-        """Returns a data frame of the training observations.
+        """
+        Returns a data frame of the training observations.
 
         Returns:
             A pandas data frame of training data instances without their labels.
@@ -14,7 +17,8 @@ class DataSet:
         pass
 
     def get_test_observations(self) -> pd.DataFrame:
-        """Returns a data frame of the test observations.
+        """
+        Returns a data frame of the test observations.
 
         Returns:
             A pandas data frame of test data instances without their labels.
@@ -22,7 +26,8 @@ class DataSet:
         pass
 
     def get_training_labels(self) -> pd.Series:
-        """Returns a series of the training observation labels.
+        """
+        Returns a series of the training observation labels.
 
         Returns:
             A series of values where each element is the predicted label of the corresponding training observation.
@@ -30,7 +35,8 @@ class DataSet:
         pass
 
     def get_test_labels(self) -> pd.Series:
-        """Returns a series of the test observation labels.
+        """
+        Returns a series of the test observation labels.
 
         Returns:
             A series of values where each element is the predicted label of the corresponding test observation.
@@ -39,7 +45,8 @@ class DataSet:
 
 
 def shuffle(observations_df, labels_sr):
-    """Shuffles the rows of the observations data frame and the values of the label series.
+    """
+    Shuffles the rows of the observations data frame and the values of the label series.
 
     It applies the same permutation to the indices of both the data frame and the series. Therefore, observations
     and labels indexed by the same number will still share a common index.
@@ -57,7 +64,8 @@ def shuffle(observations_df, labels_sr):
 
 
 def split_train_test(observations_df, labels_sr, test_share, shuffle_data, reset_indices):
-    """Splits the observations and labels into training and test observations and labels.
+    """
+    Splits the observations and labels into training and test observations and labels.
 
     It also optionally shuffles the observation-label pairs and can also reset their indices after the split.
 
@@ -95,7 +103,8 @@ def split_train_test(observations_df, labels_sr, test_share, shuffle_data, reset
 
 
 def oversample(observations_df, labels_sr, shuffle_data=True):
-    """Over-samples the data set to address class imbalance. It repeats rows of the data set until all classes are
+    """
+    Over-samples the data set to address class imbalance. It repeats rows of the data set until all classes are
     featured as many times as the originally most frequent class.
 
     Args:
@@ -133,7 +142,9 @@ def oversample(observations_df, labels_sr, shuffle_data=True):
 
 
 class BostonDataSet(DataSet):
-    """The Boston house pricing data set."""
+    """
+    The Boston house pricing data set.
+    """
     def __init__(self, data_path, shuffle_data=True, reset_indices=True, test_share=.3, label_column_idx=13):
         complete_df = pd.read_csv(data_path, index_col=False)
         complete_df = complete_df.astype(np.float_)
@@ -181,7 +192,9 @@ class ExamDataSet(DataSet):
 
 
 class IrisDataSet(DataSet):
-    """The iris flower data set."""
+    """
+    The iris flower data set.
+    """
     def __init__(self, data_path, shuffle_data=True, reset_indices=True, test_share=.3, label_column_idx=4):
         complete_df = pd.read_csv(data_path, index_col=False)
         complete_df['species'] = complete_df['species'].replace('setosa', 0)
@@ -207,7 +220,9 @@ class IrisDataSet(DataSet):
 
 
 class TitanicDataSet(DataSet):
-    """The Titanic data set."""
+    """
+    The Titanic data set.
+    """
     def __init__(self, data_path, shuffle_data=True, reset_indices=True, test_share=.3, label_column_idx=0):
         complete_df = pd.read_csv(data_path, index_col=False)
         complete_df = complete_df.drop('Name', axis=1)
@@ -237,7 +252,9 @@ class TitanicDataSet(DataSet):
 
 
 class MushroomDataSet(DataSet):
-    """The mushrooms data set."""
+    """
+    The mushrooms data set.
+    """
     def __init__(self, data_path, shuffle_data=True, reset_indices=True, test_share=.3, label_column_idx=0):
         complete_df = pd.read_csv(data_path, index_col=False)
         complete_df = pd.get_dummies(complete_df, columns=complete_df.columns, prefix=complete_df.columns,
@@ -267,7 +284,9 @@ class MushroomDataSet(DataSet):
 
 
 class IMDBDataSet(DataSet):
-    """A data set of movie attributes as data points and user ratings as the labels based on an IMDb ratings history."""
+    """
+    A data set of movie attributes as data points and user ratings as the labels based on an IMDb ratings history.
+    """
     def __init__(self, data_path, shuffle_data=True, reset_indices=True, oversample_training_data=True,
                  test_share=.2, label_column_idx=0, min_director_occurrences=2, binary=False, positive_rating_cutoff=7):
         observations_df = pd.read_csv(data_path, encoding='ISO-8859-1')
@@ -313,7 +332,8 @@ class IMDBDataSet(DataSet):
         return max(0, date_delta.days)
 
     def build_observation(self, imdb_rating, runtime, num_of_votes, release_date, title_type, genres, directors):
-        """Creates a single row data frame out of the observation.
+        """
+        Creates a single row data frame out of the observation.
 
         Args:
             imdb_rating: The IMDB rating of the title.
@@ -350,7 +370,8 @@ class IMDBDataSet(DataSet):
         return observation_df
 
     def get_training_observation_ids(self):
-        """Returns a series of IMDb title IDs with each element corresponding to a row of the training observations.
+        """
+        Returns a series of IMDb title IDs with each element corresponding to a row of the training observations.
 
         Returns:
             A pandas series of IMDb IDs.
@@ -358,7 +379,8 @@ class IMDBDataSet(DataSet):
         return self.training_observation_ids_sr
 
     def get_test_observation_ids(self):
-        """Returns a series of IMDb title IDs with each element corresponding to a row of the test observations.
+        """
+        Returns a series of IMDb title IDs with each element corresponding to a row of the test observations.
 
         Returns:
             A pandas series of IMDb IDs.

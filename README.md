@@ -18,13 +18,13 @@ All columns with `float` data type are assumed to represent continuous features,
 | LinearRegression      | CN, BC, OC              | :heavy_multiplication_x: | Analytic                                       |
 | LinearRidgeRegression | CN, BC, OC              | :heavy_multiplication_x: | Analytic                                       |
 | LinearLassoRegression | CN, BC, OC              | :heavy_multiplication_x: | Coordinate Descent with Exact Line Search      |
-| KNearestNeighbors     | CN, BC, OC              | :heavy_multiplication_x: | -                                              |
-| DecisionTree          | CN, BC, OC, NC          | :heavy_multiplication_x: | -                                              |
-| BaggedTrees           | CN, BC, OC, NC          | :heavy_multiplication_x: | -                                              |
-| RandomForest          | CN, BC, OC, NC          | :heavy_multiplication_x: | -                                              |
+| KNearestNeighbors     | CN, BC, OC              | :heavy_multiplication_x: |                                                |
+| DecisionTree          | CN, BC, OC, NC          | :heavy_multiplication_x: |                                                |
+| BaggedTrees           | CN, BC, OC, NC          | :heavy_multiplication_x: |                                                |
+| RandomForest          | CN, BC, OC, NC          | :heavy_multiplication_x: |                                                |
 | BoostedTrees          | CN, BC, OC, NC          | :heavy_multiplication_x: | Gradient Descent with Backtracking Line Search |
-| Bootstrapping         | -                       | :heavy_check_mark:       | -                                              |
-| GradientBoosting      | -                       | :heavy_check_mark:       | Gradient Descent with Backtracking Line Search |
+| Bootstrapping         |                         | :heavy_check_mark:       |                                                |
+| GradientBoosting      |                         | :heavy_check_mark:       | Gradient Descent with Backtracking Line Search |
 
 Regression models predict continuous dependent variables. They can be used, for example, to predict house prices and temperatures. The data type of such predictions is always `float`.
 
@@ -34,20 +34,22 @@ Regression models predict continuous dependent variables. They can be used, for 
 | LogisticRegression      | CN, BC, OC              | :heavy_multiplication_x: | Newton-Raphson                                 |
 | LogisticRidgeRegression | CN, BC, OC              | :heavy_multiplication_x: | Newton-Raphson                                 |
 | BoostedTrees            | CN, BC, OC, NC          | :heavy_multiplication_x: | Gradient Descent with Backtracking Line Search |
-| GradientBoosting        | -                       | :heavy_check_mark:       | Gradient Descent with Backtracking Line Search |
+| GradientBoosting        |                         | :heavy_check_mark:       | Gradient Descent with Backtracking Line Search |
 
 Binary classifiers predict binary dependent variables. The only two values the predictions can take on are 0 and 1 (after rounding to the closest integer). These values usually encode a true or false relationship with 1 meaning that the observation is predicted to belong to the class in question and 0 meaning it is not. The data type of these models' predictions is always `int`. Use cases of binary classifiers include, for example, the prediction of whether a mushroom is edible or whether a transaction is fraudulent. With some work, binary classifiers can be applied to multinomial classification problems as well. This is done by fitting a binary predictor to each class and when it comes to inference, running the observation through all the binary predictors and selecting the class whose predictor made the most confident positive prediction.
 
 ### Classification
-| Model                     | Supported Feature Types | Meta                     | Optimization Method                            |
-| ------------------------- | ----------------------- | ------------------------ | ---------------------------------------------- |
-| NaiveBayes                | CN, BC, OC, NC          | :heavy_multiplication_x: | -                                              |
-| KNearestNeighbors         | CN, BC, OC              | :heavy_multiplication_x: | -                                              |
-| DecisionTree              | CN, BC, OC, NC          | :heavy_multiplication_x: | -                                              |
-| BaggedTrees               | CN, BC, OC, NC          | :heavy_multiplication_x: | -                                              |
-| RandomForest              | CN, BC, OC, NC          | :heavy_multiplication_x: | -                                              |
-| Bootstrapping             | -                       | :heavy_check_mark:       | -                                              |
-| MultiBinaryClassification | -                       | :heavy_check_mark:       | -                                              |
+| Model                         | Supported Feature Types | Meta                     | Optimization Method |
+| ----------------------------- | ----------------------- | ------------------------ | ------------------- |
+| NaiveBayes                    | CN, BC, OC, NC          | :heavy_multiplication_x: |                     |
+| LinearDiscriminantAnalysis    | CN                      | :heavy_multiplication_x: |                     |
+| QuadraticDiscriminantAnalysis | CN                      | :heavy_multiplication_x: |                     |
+| KNearestNeighbors             | CN, BC, OC              | :heavy_multiplication_x: |                     |
+| DecisionTree                  | CN, BC, OC, NC          | :heavy_multiplication_x: |                     |
+| BaggedTrees                   | CN, BC, OC, NC          | :heavy_multiplication_x: |                     |
+| RandomForest                  | CN, BC, OC, NC          | :heavy_multiplication_x: |                     |
+| Bootstrapping                 |                         | :heavy_check_mark:       |                     |
+| MultiBinaryClassification     |                         | :heavy_check_mark:       |                     |
 
 Classifiers predict categorical dependent variables. They are used to predict which class an observation belongs to. Examples include the prediction of which animal an image represents or which species of flower a specimen belongs to based on its petal measurements. Classification models make `int` predictions. All classifiers can be used as binary classifiers as well.
 
@@ -66,7 +68,7 @@ OSML also provides a number of different data sets the models can be tested on. 
 ## Usage
 The library has an API similar to that of [sklearn](https://scikit-learn.org/stable/). Data sets generally contain four collections of data; a training data frame, a series of training labels, a test data frame, and a series of test labels. Each model has a `fit` function that takes a data frame of observations and a series of labels as its arguments. The `predict` function can be used on fitted models to make predictions about the labels of a data frame of observations. All models have an `evaluate` function as well that measures the fit of a series of predictions to a series of labels based on some metric. This metric is the root mean squared error for regression models, accuracy for classification models, and the F1 score for binary classification models. Finally, models that optimize a loss function also have a `test` method that measures the error of the predictions of the model according to the loss function.
 
-Binary classification models can also be used to make predictions that are not rounded to the closest integer via the `predict_probabilities` function. Moreover, they can evaluate the precision and recall of predictions using the `evaluate_precision` and `evaluate_recall` methods. The `MultiBinaryClassification` meta-model can turn a binary classifier into a multi-nomial classifier by fitting a copy of the binary classifier instance to each class of the multi-nomial data set. Other meta-models such as `BootstrapAggregating` and `GradientBoosting` function as model ensembles using multiple instances of a model to enhance its predictive power.
+Binary classification models can also be used to make predictions that are not rounded to the closest integer via the `predict_probabilities` function. Moreover, they can evaluate the precision and recall of predictions using the `evaluate_precision` and `evaluate_recall` methods. The `MultiBinaryClassification` meta-model can turn a binary classifier into a multinomial classifier by fitting a copy of the binary classifier instance to each class of the multinomial data set. Other meta-models such as `BootstrapAggregating` and `GradientBoosting` function as model ensembles using multiple instances of a model to enhance its predictive power.
 
 The code snippet below demonstrates the usage of the library on a simple example of fitting a random forest to a classification data set and using it to make predictions on new observations.
 
