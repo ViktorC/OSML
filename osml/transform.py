@@ -171,16 +171,22 @@ class LinearDiscriminantAnalysis(TransformativeModel):
 
     def _fit(self, observations_df, labels_sr):
         n_features = len(observations_df.columns)
+        n_observations = len(observations_df.index)
         total_mean = observations_df.values.mean(axis=0)
         within_class_covariance_matrix = np.zeros((n_features, n_features))
         between_class_covariance_matrix = np.zeros((n_features, n_features))
-        for klass in labels_sr.unique():
+        unique_classes = labels_sr.unique()
+        n_classes = unique_classes.shape[0]
+        for klass in unique_classes:
             class_observations = observations_df.values[labels_sr[labels_sr == klass].index]
             class_mean = class_observations.mean(axis=0)
             within_class_deviance = class_observations - class_mean
             within_class_covariance_matrix += within_class_deviance.T @ within_class_deviance
             between_class_deviance = class_mean - total_mean
             between_class_covariance_matrix += np.outer(between_class_deviance, between_class_deviance)
+        # LDA assumes the covariance of features to be the same across the different classes.
+        within_class_covariance_matrix /= (n_observations - n_classes)
+        between_class_covariance_matrix /= n_classes
         lda_matrix = np.linalg.inv(within_class_covariance_matrix) @ between_class_covariance_matrix
         eigen_values, eigen_vectors = np.linalg.eig(lda_matrix)
         _, self._eigen_vector_matrix = _select_eigen_vectors(eigen_values, eigen_vectors, self.dimensions_to_retain,
