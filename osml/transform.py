@@ -10,24 +10,22 @@ class TransformativeModel(osm.Model):
     def __init__(self, epsilon=1e-8):
         super(TransformativeModel, self).__init__(epsilon)
 
-    def _transform(self, observations_df: pd.DataFrame, labels_sr: pd.Series) -> np.array:
+    def _transform(self, observations_df: pd.DataFrame) -> np.array:
         pass
 
-    def transform(self, observations_df, labels_sr):
+    def transform(self, observations_df):
         """
         Transforms the observation sample using the information learnt about the data set. This method requires the
         'fit' method to have been invoked.
 
         Args:
             observations_df: A 2D frame of data points where each column is a feature and each row is an observation.
-            labels_sr: A series of target values where each element is the label of the corresponding row in the data
-            frame of observations.
 
         Returns:
             The transformed data frame of observations.
         """
-        self._validate_observations_and_labels(observations_df, labels_sr)
-        return pd.DataFrame(self._transform(observations_df, labels_sr))
+        self._validate_observations(observations_df)
+        return pd.DataFrame(self._transform(observations_df))
 
 
 class Centering(TransformativeModel):
@@ -41,7 +39,7 @@ class Centering(TransformativeModel):
     def _fit(self, observations_df, labels_sr):
         self._mean = observations_df.values.mean(axis=0)
 
-    def _transform(self, observations_df, labels_sr):
+    def _transform(self, observations_df):
         return observations_df.values - self._mean
 
 
@@ -60,55 +58,133 @@ class Standardization(TransformativeModel):
         self._mean = observations.mean(axis=0)
         self._sd = observations.std(axis=0)
 
-    def _transform(self, observations_df, labels_sr):
+    def _transform(self, observations_df):
         return (observations_df.values - self._mean) / (self._sd + self.epsilon)
+
+
+class BoxCoxTransformation(TransformativeModel):
+    """
+    A Box-Cox transformation to attempt to make data more normally distributed.
+    """
+    def __init__(self):
+        super(BoxCoxTransformation, self).__init__()
+        self._lambda1 = None
+        self._lambda2 = None
+
+    def _fit(self, observations_df, labels_sr):
+        observations = observations_df.values
+        self._lambda2 = -observations.min(axis=0) + self.epsilon
+        self._lambda1 = np.zeros(self._lambda2.shape)
+
+    def _transform(self, observations_df):
+        observations = observations_df.values
+        return np.where(self._lambda1 == 0,
+                        np.log(observations + self._lambda2),
+                        (np.power(observations + self._lambda2, self._lambda1) - 1) / self._lambda1)
+
+
+def _select_k_top_eigen_vectors(eigen_values, eigen_vectors, k):
+    sorted_indices = np.flip(np.argsort(eigen_values))
+    sorted_indices = sorted_indices[:min(k, len(sorted_indices))]
+    return eigen_values[sorted_indices], eigen_vectors[:, sorted_indices]
+
+
+def _select_min_required_eigen_vectors(eigen_values, eigen_vectors, relative_variance_to_retain):
+    sorted_indices = np.flip(np.argsort(eigen_values))
+    total_eigen_values = eigen_values.sum()
+    cutoff = 1
+    retained_eigen_values = 0
+    for eigen_value in eigen_values[sorted_indices]:
+        retained_eigen_values += eigen_value
+        if float(retained_eigen_values) / total_eigen_values >= relative_variance_to_retain:
+            break
+        cutoff += 1
+    sorted_indices = sorted_indices[:cutoff]
+    return eigen_values[sorted_indices], eigen_vectors[:, sorted_indices]
+
+
+def _select_eigen_vectors(eigen_values, eigen_vectors, dimensions_to_retain, relative_variance_to_retain):
+    if dimensions_to_retain is not None:
+        return _select_k_top_eigen_vectors(eigen_values, eigen_vectors, dimensions_to_retain)
+    return _select_min_required_eigen_vectors(eigen_values, eigen_vectors, relative_variance_to_retain)
 
 
 class PrincipalComponentAnalysis(TransformativeModel):
     """
     A principal component analysis preprocessor.
+
+    https://towardsdatascience.com/a-one-stop-shop-for-principal-component-analysis-5582fb7e0a9c
     """
-    def __init__(self, standardize=False, relative_variance_to_retain=1., dimensions_to_retain=None):
+    def __init__(self, standardize=False, whiten=False, relative_variance_to_retain=1., dimensions_to_retain=None):
         super(PrincipalComponentAnalysis, self).__init__()
         if not 0 < relative_variance_to_retain <= 1:
             raise ValueError
         if dimensions_to_retain is not None and dimensions_to_retain <= 0:
             raise ValueError
         self.standardize = standardize
+        self.whiten = whiten
         self.relative_variance_to_retain = relative_variance_to_retain
         self.dimensions_to_retain = dimensions_to_retain
         self._mean = None
         self._sd = None
         self._eigen_vector_matrix = None
+        self._eigen_values = None
 
     def _fit(self, observations_df, labels_sr):
         observations = observations_df.values
         self._mean = observations.mean(axis=0)
+        prepped_observations = observations - self._mean
         if self.standardize:
             self._sd = observations.std(axis=0)
-            observations = (observations - self._mean) / (self._sd + self.epsilon)
-        else:
-            observations -= self._mean
-        covariance_matrix = np.dot(observations.transpose(), observations)
+            prepped_observations /= (self._sd + self.epsilon)
+        covariance_matrix = (prepped_observations.T @ prepped_observations) / (len(observations_df.index) - 1)
         eigen_values, eigen_vectors = np.linalg.eig(covariance_matrix)
-        # Sort the eigen vectors by their eigen values in descending order
-        sorted_indices = np.flip(np.argsort(eigen_values))
-        if self.dimensions_to_retain is not None:
-            sorted_indices = sorted_indices[:min(self.dimensions_to_retain, len(sorted_indices))]
-            self._eigen_vector_matrix = eigen_vectors[:, sorted_indices]
-        else:
-            total_eigen_values = eigen_values.sum()
-            cutoff = 1
-            retained_eigen_values = 0
-            for eigen_value in eigen_values[sorted_indices]:
-                retained_eigen_values += eigen_value
-                if float(retained_eigen_values) / total_eigen_values >= self.relative_variance_to_retain:
-                    break
-                cutoff += 1
-            self._eigen_vector_matrix = eigen_vectors[:, sorted_indices[:cutoff]]
+        self._eigen_values, self._eigen_vector_matrix = _select_eigen_vectors(eigen_values, eigen_vectors,
+                                                                              self.dimensions_to_retain,
+                                                                              self.relative_variance_to_retain)
 
-    def _transform(self, observations_df, labels_sr):
-        observations = observations_df.values - self._mean
+    def _transform(self, observations_df):
+        prepped_observations = observations_df.values - self._mean
         if self.standardize:
-            observations /= (self._sd + self.epsilon)
-        return np.dot(observations, self._eigen_vector_matrix)
+            prepped_observations /= (self._sd + self.epsilon)
+        transformed_observations = prepped_observations @ self._eigen_vector_matrix
+        if self.whiten:
+            transformed_observations /= np.sqrt(self._eigen_values + self.epsilon)
+        return transformed_observations
+
+
+class LinearDiscriminantAnalysis(TransformativeModel):
+    """
+    A linear discriminant analysis preprocessor.
+
+    https://sebastianraschka.com/Articles/2014_python_lda.html
+    """
+    def __init__(self, relative_variance_to_retain=1., dimensions_to_retain=None):
+        super(LinearDiscriminantAnalysis, self).__init__()
+        if not 0 < relative_variance_to_retain <= 1:
+            raise ValueError
+        if dimensions_to_retain is not None and dimensions_to_retain <= 0:
+            raise ValueError
+        self.relative_variance_to_retain = relative_variance_to_retain
+        self.dimensions_to_retain = dimensions_to_retain
+        self._eigen_vector_matrix = None
+
+    def _fit(self, observations_df, labels_sr):
+        n_features = len(observations_df.columns)
+        total_mean = observations_df.values.mean(axis=0)
+        within_class_covariance_matrix = np.zeros((n_features, n_features))
+        between_class_covariance_matrix = np.zeros((n_features, n_features))
+        for klass in labels_sr.unique():
+            class_observations = observations_df.values[labels_sr[labels_sr == klass].index]
+            class_mean = class_observations.mean(axis=0)
+            within_class_deviance = class_observations - class_mean
+            within_class_covariance_matrix += within_class_deviance.T @ within_class_deviance
+            between_class_deviance = class_mean - total_mean
+            between_class_covariance_matrix += np.outer(between_class_deviance, between_class_deviance)
+        lda_matrix = np.linalg.inv(within_class_covariance_matrix) @ between_class_covariance_matrix
+        eigen_values, eigen_vectors = np.linalg.eig(lda_matrix)
+        _, self._eigen_vector_matrix = _select_eigen_vectors(eigen_values, eigen_vectors, self.dimensions_to_retain,
+                                                             self.relative_variance_to_retain)
+
+    def _transform(self, observations_df):
+        return observations_df.values @ self._eigen_vector_matrix

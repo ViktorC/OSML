@@ -234,7 +234,7 @@ class LinearRegression(RegressionModel):
         # NOTE: Using the bias trick reduces the parameters to a single vector and significantly simplifies the
         # analytic solution.
         observations = _bias_trick(observations_df)
-        observations_trans = observations.transpose()
+        observations_trans = observations.T
         self._beta = np.linalg.inv(observations_trans @ observations) @ (observations_trans @ labels_sr.values)
 
     def _predict(self, observations_df):
@@ -256,7 +256,7 @@ class LinearRidgeRegression(LinearRegression):
 
     def _fit(self, observations_df, labels_sr):
         observations = _bias_trick(observations_df)
-        observations_trans = observations.transpose()
+        observations_trans = observations.T
         self._beta = np.linalg.inv((observations_trans @ observations) + self.alpha) @ \
             (observations_trans @ labels_sr.values)
 
@@ -298,7 +298,7 @@ class LinearLassoRegression(LinearRegression):
                 obs_j = observations[:, j]
                 obs_not_j = np.delete(observations, j, axis=1)
                 beta_not_j = np.delete(self._beta, j)
-                obs_j_trans = obs_j.transpose()
+                obs_j_trans = obs_j.T
                 p = obs_j_trans @ labels - obs_j_trans @ (obs_not_j @ beta_not_j)
                 z = obs_j_trans @ obs_j
                 # As the absolute value function is not differentiable at 0, use soft thresholding.
@@ -342,7 +342,7 @@ class LogisticRegression(BinaryClassificationModel):
     def _fit(self, observations_df, labels_sr):
         # Use Newton's method to numerically approximate the root of the log likelihood function's derivative.
         observations = _bias_trick(observations_df)
-        observations_trans = observations.transpose()
+        observations_trans = observations.T
         labels = labels_sr.values
         self._beta = np.zeros(observations.shape[1], )
         for i in range(self.iterations):
@@ -532,10 +532,11 @@ class DiscriminantAnalysis(ClassificationModel):
         self._classes = None
         self._class_priors = None
         self._mean_by_class = None
-        self._inverse_covariance_matrix_by_class = None
-        self._inverse_common_covariance_matrix = None
 
-    def _set_covariance_estimates(self, covariance_matrix: np.array, klass: str, n_observations: int):
+    def _init_covariance_estimates(self, n_features: int) -> None:
+        pass
+
+    def _update_covariance_estimates(self, covariance_matrix: np.array, klass: str, n_observations: int):
         pass
 
     def _finalize_covariance_estimates(self, total_n_observations: int) -> None:
@@ -550,16 +551,15 @@ class DiscriminantAnalysis(ClassificationModel):
         self._classes = labels_sr.unique()
         self._class_priors = labels_sr.value_counts().astype(np.float_) / labels_sr.count()
         self._mean_by_class = {}
-        self._inverse_covariance_matrix_by_class = {}
-        self._inverse_common_covariance_matrix = np.zeros((n_features, n_features))
+        self._init_covariance_estimates(n_features)
         for klass in self._classes:
             respective_observations_df = observations_df.reindex(labels_sr[labels_sr == klass].index)
             n_observations = len(respective_observations_df.index)
             class_mean = respective_observations_df.mean(axis=0).values
             self._mean_by_class[klass] = class_mean
             class_deviance = respective_observations_df.values - class_mean
-            class_covariance_matrix = np.dot(class_deviance.transpose(), class_deviance)
-            self._set_covariance_estimates(class_covariance_matrix, klass, n_observations)
+            class_covariance_matrix = class_deviance.T @ class_deviance
+            self._update_covariance_estimates(class_covariance_matrix, klass, n_observations)
         self._finalize_covariance_estimates(total_n_observations)
 
     def _predict(self, observations_df):
@@ -587,11 +587,11 @@ class LinearDiscriminantAnalysis(DiscriminantAnalysis):
         super(LinearDiscriminantAnalysis, self).__init__()
         self._inverse_common_covariance_matrix = None
 
-    def _set_covariance_estimates(self, covariance_matrix, klass, n_observations):
-        if self._inverse_common_covariance_matrix is None:
-            self._inverse_common_covariance_matrix = covariance_matrix
-        else:
-            self._inverse_common_covariance_matrix += covariance_matrix
+    def _init_covariance_estimates(self, n_features):
+        self._inverse_common_covariance_matrix = np.zeros((n_features, n_features))
+
+    def _update_covariance_estimates(self, covariance_matrix, klass, n_observations):
+        self._inverse_common_covariance_matrix += covariance_matrix
 
     def _finalize_covariance_estimates(self, total_n_observations):
         self._inverse_common_covariance_matrix = np.linalg.inv(self._inverse_common_covariance_matrix /
@@ -600,8 +600,8 @@ class LinearDiscriminantAnalysis(DiscriminantAnalysis):
     def _calculate_relative_probability(self, observation_sr, klass):
         mean = self._mean_by_class[klass]
         return np.log(self._class_priors[klass]) - \
-            .5 * np.dot(np.dot(mean, self._inverse_common_covariance_matrix), mean.transpose()) + \
-            np.dot(np.dot(observation_sr.values, self._inverse_common_covariance_matrix), mean.transpose())
+            .5 * (mean @ self._inverse_common_covariance_matrix) @ mean.T + \
+            (observation_sr.values @ self._inverse_common_covariance_matrix) @ mean.T
 
 
 class QuadraticDiscriminantAnalysis(DiscriminantAnalysis):
@@ -612,7 +612,10 @@ class QuadraticDiscriminantAnalysis(DiscriminantAnalysis):
         super(QuadraticDiscriminantAnalysis, self).__init__()
         self._inverse_covariance_matrix_by_class = None
 
-    def _set_covariance_estimates(self, covariance_matrix, klass, n_observations):
+    def _init_covariance_estimates(self, n_features):
+        self._inverse_covariance_matrix_by_class = {}
+
+    def _update_covariance_estimates(self, covariance_matrix, klass, n_observations):
         self._inverse_covariance_matrix_by_class[klass] = np.linalg.inv(covariance_matrix / (n_observations - 1))
 
     def _calculate_relative_probability(self, observation_sr, klass):
@@ -620,9 +623,9 @@ class QuadraticDiscriminantAnalysis(DiscriminantAnalysis):
         mean = self._mean_by_class[klass]
         inverse_covariance_matrix = self._inverse_covariance_matrix_by_class[klass]
         return np.log(self._class_priors[klass]) - \
-            .5 * np.dot(np.dot(mean, inverse_covariance_matrix), mean.transpose()) + \
-            np.dot(np.dot(observation, inverse_covariance_matrix), mean.transpose()) - \
-            .5 * (np.dot(np.dot(observation, inverse_covariance_matrix), observation.transpose()) -
+            .5 * (mean @ inverse_covariance_matrix) @ mean.T + \
+            (observation @ inverse_covariance_matrix) @ mean.T - \
+            .5 * ((observation @ inverse_covariance_matrix) @ observation.T -
                   np.log(np.linalg.det(np.linalg.inv(inverse_covariance_matrix))))
 
 
@@ -1173,7 +1176,7 @@ class GradientBoosting(PredictiveModel):
         base_loss = self._loss(base_predictions_sr, labels_sr)
         # The expected change of loss w.r.t. the predictions as per the first order Taylor-expansion of the loss
         # function around the base predictions (down-scaled by a constant between 0 and 1).
-        expected_change = self.armijo_factor * np.dot(gradient_sr.values, descent_direction_sr.values)
+        expected_change = self.armijo_factor * (gradient_sr.values @ descent_direction_sr.values)
         step_size = self.max_step_size
         # Keep reducing the step size until it yields a reduction in loss that matches or exceeds our expectations for
         # a change this big in the independent variable.
