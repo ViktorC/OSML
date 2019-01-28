@@ -286,6 +286,16 @@ class LinearLassoRegression(LinearRegression):
         if p > self.alpha:
             return p - self.alpha
 
+    def _exact_line_search(self, observations, labels, i):
+        obs_i = observations[:, i]
+        obs_not_i = np.delete(observations, i, axis=1)
+        beta_not_i = np.delete(self._beta, i)
+        obs_i_trans = obs_i.T
+        p = obs_i_trans @ labels - obs_i_trans @ (obs_not_i @ beta_not_i)
+        z = obs_i_trans @ obs_i
+        # As the absolute value function is not differentiable at 0, use soft thresholding.
+        return self._soft_threshold(p) / z
+
     def _fit(self, observations_df, labels_sr):
         observations = _bias_trick(observations_df)
         labels = labels_sr.values
@@ -295,14 +305,7 @@ class LinearLassoRegression(LinearRegression):
             # Optimize the parameters analytically dimension by dimension (exact line search).
             for j in range(observations.shape[1]):
                 # Solve for the (sub)derivative of the loss function with respect to the jth parameter.
-                obs_j = observations[:, j]
-                obs_not_j = np.delete(observations, j, axis=1)
-                beta_not_j = np.delete(self._beta, j)
-                obs_j_trans = obs_j.T
-                p = obs_j_trans @ labels - obs_j_trans @ (obs_not_j @ beta_not_j)
-                z = obs_j_trans @ obs_j
-                # As the absolute value function is not differentiable at 0, use soft thresholding.
-                self._beta[j] = self._soft_threshold(p) / z
+                self._beta[j] = self._exact_line_search(observations, labels, j)
             # If a full cycle of optimization does not reduce the loss, the model has converged.
             loss = self.test(observations_df, labels_sr)
             if loss < prev_loss:
@@ -1171,7 +1174,7 @@ class GradientBoosting(PredictiveModel):
             model.fit(observations_sample_df, labels_sr.reindex(observations_sample_df.index))
         return model
 
-    def _line_search(self, base_predictions_sr, gradient_sr, descent_direction_sr, labels_sr):
+    def _backtracking_line_search(self, base_predictions_sr, gradient_sr, descent_direction_sr, labels_sr):
         # Backtracking line search using the Armijo-Goldstein termination condition.
         base_loss = self._loss(base_predictions_sr, labels_sr)
         # The expected change of loss w.r.t. the predictions as per the first order Taylor-expansion of the loss
@@ -1194,7 +1197,7 @@ class GradientBoosting(PredictiveModel):
                 break
             model = self._build_model(observations_df, -gradient_sr)
             residual_predictions_sr = model.predict(observations_df)
-            weight = self._line_search(predictions_sr, gradient_sr, residual_predictions_sr, labels_sr)
+            weight = self._backtracking_line_search(predictions_sr, gradient_sr, residual_predictions_sr, labels_sr)
             self._weighted_models.append((model, weight))
             predictions_sr += residual_predictions_sr * weight
 
