@@ -200,30 +200,28 @@ class UnivariateBoxCoxTransformation(TransformativeModel):
         self._lambda2 = None
 
     def _box_cox_transform(self, observations, lambda1, lambda2):
-        cond = np.isclose(np.zeros(observations.shape), np.zeros(observations.shape) + lambda1)
-        return np.where(cond,
+        return np.where(np.isclose(np.zeros(observations.shape), np.zeros(observations.shape) + lambda1),
                         np.log(observations + lambda2),
                         (np.power(observations + lambda2, lambda1) - 1) / (lambda1 + self.epsilon))
 
-    def _negative_gaussian_log_likelihood(self, transformed_observations):
+    def _gaussian_log_likelihood(self, transformed_observations):
         n_observations = transformed_observations.shape[0]
         mean = transformed_observations.mean(axis=0)
         squared_deviance = np.square(transformed_observations - mean)
         squared_deviance_sum = squared_deviance.sum(axis=0)
         variance = squared_deviance_sum / n_observations
         variance_by_two = 2 * variance + self.epsilon
-        return n_observations / 2 * np.log(math.pi * variance_by_two) + \
-            1 / variance_by_two * squared_deviance_sum
+        return -(n_observations / 2) * np.log(math.pi * variance_by_two) - \
+            (1 / variance_by_two) * squared_deviance_sum
 
-    def _negative_gaussian_log_likelihood_gradient(self, observations, transformed_observations):
+    def _gaussian_log_likelihood_gradient(self, observations, transformed_observations):
         mean = transformed_observations.mean(axis=0)
         deviance = transformed_observations - mean
         variance = np.square(deviance).mean(axis=0)
         # This is the derivative of the negative log of the univariate Gaussian likelihood function (the features are
         # assumed to be linearly independent) w.r.t. the Box-Cox-transformed observations.
-        d_negative_log_likelihood_wrt_transformed_observations = deviance / variance
+        d_log_likelihood_wrt_transformed_observations = -deviance / variance
         # The derivative of the Box-Cox transformation w.r.t. lambda1.
-        cond = np.logical_not(np.isclose(np.zeros(observations.shape), np.zeros(observations.shape) + self._lambda1))
         d_box_cox_transform_wrt_lambda1 = np.where(
             np.logical_not(np.isclose(np.zeros(observations.shape), np.zeros(observations.shape) + self._lambda1)),
             (1 + np.power(observations + self._lambda2, self._lambda1) *
@@ -235,7 +233,7 @@ class UnivariateBoxCoxTransformation(TransformativeModel):
             # lambda1 = 0).
             np.ones(observations.shape))
         # Just apply the chain rule.
-        return (d_negative_log_likelihood_wrt_transformed_observations * d_box_cox_transform_wrt_lambda1).sum(axis=0)
+        return (d_log_likelihood_wrt_transformed_observations * d_box_cox_transform_wrt_lambda1).sum(axis=0)
 
     phi = (1 + math.sqrt(5)) / 2
 
@@ -245,10 +243,10 @@ class UnivariateBoxCoxTransformation(TransformativeModel):
         d = a + golden_section
         return c, d
 
-    def _calculate_negative_log_likelihood(self, observations, descent_direction, step_size, ind):
+    def _calculate_log_likelihood(self, observations, descent_direction, step_size, ind):
         transformed_observations = self._box_cox_transform(
             observations[:, ind], self._lambda1[ind] + step_size * descent_direction[ind], self._lambda2[ind])
-        return self._negative_gaussian_log_likelihood(transformed_observations)
+        return self._gaussian_log_likelihood(transformed_observations)
 
     def _golden_section_line_search(self, observations, descent_direction):
         step_sizes = np.zeros(self._lambda1.shape)
@@ -257,9 +255,9 @@ class UnivariateBoxCoxTransformation(TransformativeModel):
             b = self.init_bracket_width
             c, d = self._calculate_breaking_points(a, b)
             while abs(c - d) >= self.min_bracket_width:
-                neg_log_likelihood_c = self._calculate_negative_log_likelihood(observations, descent_direction, c, i)
-                neg_log_likelihood_d = self._calculate_negative_log_likelihood(observations, descent_direction, d, i)
-                if neg_log_likelihood_c < neg_log_likelihood_d:
+                log_likelihood_c = self._calculate_log_likelihood(observations, descent_direction, c, i)
+                log_likelihood_d = self._calculate_log_likelihood(observations, descent_direction, d, i)
+                if log_likelihood_c > log_likelihood_d:
                     b = d
                 else:
                     a = c
@@ -272,16 +270,15 @@ class UnivariateBoxCoxTransformation(TransformativeModel):
         self._lambda2 = np.maximum(np.full((observations.shape[1]), self.epsilon), -observations.min(axis=0))
         # Initialize lambda1 to random values in the range of [-1, 1).
         self._lambda1 = np.random.random(self._lambda2.shape) * 2 - 1
-        # Maximize the log of the Gaussian likelihood function (i.e. minimize its negative) using gradient descent.
+        # Maximize the log of the Gaussian likelihood function using gradient ascent.
         for i in range(self.iterations):
             transformed_observations = self._box_cox_transform(observations, self._lambda1, self._lambda2)
-            gradient = self._negative_gaussian_log_likelihood_gradient(observations, transformed_observations)
+            gradient = self._gaussian_log_likelihood_gradient(observations, transformed_observations)
             if np.all(np.absolute(gradient) <= self.min_gradient):
                 break
-            descent_direction = -gradient
-            step_sizes = self._golden_section_line_search(observations, descent_direction)
-            print('lambda1', self._lambda1, 'descent_dir', descent_direction, 'step_sizes', step_sizes)
-            self._lambda1 += step_sizes * descent_direction
+            step_sizes = self._golden_section_line_search(observations, gradient)
+            print('lambda1', self._lambda1, 'descent_dir', gradient, 'step_sizes', step_sizes)
+            self._lambda1 += step_sizes * gradient
 
     def _transform(self, observations_df):
         return self._box_cox_transform(observations_df.values, self._lambda1, self._lambda2)
@@ -292,39 +289,40 @@ class UnivariateBoxCoxTransformation(TransformativeModel):
         # Initialize lambda1 to random values in the range of [-1, 1).
         self._lambda1 = np.random.random(self._lambda2.shape) * 2 - 1
         transformed_observations = self._box_cox_transform(observations, self._lambda1, self._lambda2)
-        ana_gradient = self._negative_gaussian_log_likelihood_gradient(observations, transformed_observations)
+        ana_gradient = self._gaussian_log_likelihood_gradient(observations, transformed_observations)
         print('analytic', ana_gradient)
         print()
         h = 1e-4
         num_gradient = np.zeros(ana_gradient.shape)
         for i in range(self._lambda1.shape[0]):
             self._lambda1[i] += h
-            inc = self._negative_gaussian_log_likelihood(self._box_cox_transform(observations,
-                                                                                 self._lambda1,
-                                                                                 self._lambda2))[i]
+            inc = self._gaussian_log_likelihood(self._box_cox_transform(observations,
+                                                                        self._lambda1,
+                                                                        self._lambda2))[i]
             self._lambda1[i] -= 2 * h
-            dec = self._negative_gaussian_log_likelihood(self._box_cox_transform(observations,
-                                                                                 self._lambda1,
-                                                                                 self._lambda2))[i]
+            dec = self._gaussian_log_likelihood(self._box_cox_transform(observations,
+                                                                        self._lambda1,
+                                                                        self._lambda2))[i]
             self._lambda1[i] += h
             num_gradient[i] = (inc - dec) / (2 * h)
         print('numeric', num_gradient)
 
 
-model = UnivariateBoxCoxTransformation()
-model._gradient_check()
-
+# model = UnivariateBoxCoxTransformation()
+# model._gradient_check()
+#
 # import osml.data as data
 # import scipy.stats as stats
 #
 # data_set = data.IrisDataSet('../data/iris/iris.csv')
 #
 # observation_df = data_set.get_training_observations()
+# labels_sr = data_set.get_training_labels()
 #
 # model = UnivariateBoxCoxTransformation()
-# model.fit(observation_df, data_set.get_training_labels())
+# model.fit(pd.DataFrame(observation_df[observation_df.columns[0]]), labels_sr)
 #
-# transformed_observations_df = model.transform(observation_df)
+# transformed_observations_df = model.transform(pd.DataFrame(observation_df[observation_df.columns[0]]))
 #
 # scp_transformed_observations, lambda_value = stats.boxcox(observation_df[observation_df.columns[0]].values)
 #
