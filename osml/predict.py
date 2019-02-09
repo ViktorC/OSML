@@ -560,8 +560,8 @@ class DiscriminantAnalysis(ClassificationModel):
             n_observations = len(respective_observations_df.index)
             class_mean = respective_observations_df.mean(axis=0).values
             self._mean_by_class[klass] = class_mean
-            class_deviance = respective_observations_df.values - class_mean
-            class_covariance_matrix = class_deviance.T @ class_deviance
+            class_spread = respective_observations_df.values - class_mean
+            class_covariance_matrix = class_spread.T @ class_spread
             self._update_covariance_estimates(class_covariance_matrix, klass, n_observations)
         self._finalize_covariance_estimates(total_n_observations)
 
