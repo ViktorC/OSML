@@ -62,27 +62,6 @@ class Standardization(TransformativeModel):
         return (observations_df.values - self._mean) / (self._sd + self.epsilon)
 
 
-class BoxCoxTransformation(TransformativeModel):
-    """
-    A Box-Cox transformation to attempt to make data more normally distributed.
-    """
-    def __init__(self):
-        super(BoxCoxTransformation, self).__init__()
-        self._lambda1 = None
-        self._lambda2 = None
-
-    def _fit(self, observations_df, labels_sr):
-        observations = observations_df.values
-        self._lambda2 = -observations.min(axis=0) + self.epsilon
-        self._lambda1 = np.zeros(self._lambda2.shape)
-
-    def _transform(self, observations_df):
-        observations = observations_df.values
-        return np.where(self._lambda1 == 0,
-                        np.log(observations + self._lambda2),
-                        (np.power(observations + self._lambda2, self._lambda1) - 1) / self._lambda1)
-
-
 def _select_k_top_eigen_vectors(eigen_values, eigen_vectors, k):
     sorted_indices = np.flip(np.argsort(eigen_values))
     sorted_indices = sorted_indices[:min(k, len(sorted_indices))]
@@ -180,10 +159,10 @@ class LinearDiscriminantAnalysis(TransformativeModel):
         for klass in unique_classes:
             class_observations = observations_df.values[labels_sr[labels_sr == klass].index]
             class_mean = class_observations.mean(axis=0)
-            within_class_deviance = class_observations - class_mean
-            within_class_covariance_matrix += within_class_deviance.T @ within_class_deviance
-            between_class_deviance = class_mean - total_mean
-            between_class_covariance_matrix += np.outer(between_class_deviance, between_class_deviance)
+            within_class_residuals = class_observations - class_mean
+            within_class_covariance_matrix += within_class_residuals.T @ within_class_residuals
+            between_class_residuals = class_mean - total_mean
+            between_class_covariance_matrix += np.outer(between_class_residuals, between_class_residuals)
         # LDA assumes the covariance of features to be the same across the different classes.
         within_class_covariance_matrix /= (n_observations - n_classes)
         between_class_covariance_matrix /= n_classes
@@ -194,3 +173,84 @@ class LinearDiscriminantAnalysis(TransformativeModel):
 
     def _transform(self, observations_df):
         return observations_df.values @ self._eigen_vector_matrix
+
+
+class BoxCoxTransformation(TransformativeModel):
+    """
+    A Box-Cox transformation to make individual features more normally distributed.
+    """
+    def __init__(self, iterations=20, step_size=1e-2, min_gradient=1e-4):
+        super(BoxCoxTransformation, self).__init__()
+        if iterations <= 0:
+            raise ValueError
+        if step_size <= 0:
+            raise ValueError
+        if min_gradient < 0:
+            raise ValueError
+        self.iterations = iterations
+        self.step_size = step_size
+        self.min_gradient = min_gradient
+        self._lambda1 = None
+        self._lambda2 = None
+
+    def _box_cox_transform(self, observations):
+        return np.where(np.isclose(np.zeros(observations.shape), np.zeros(observations.shape) + self._lambda1),
+                        np.log(observations + self._lambda2),
+                        (np.power(observations + self._lambda2, self._lambda1) - 1) / (self._lambda1 + self.epsilon))
+
+    def _box_cox_log_likelihood(self, observations):
+        # Apply the Box-Cox transform.
+        transformed_observations = self._box_cox_transform(observations)
+        # The log likelihood of the transformed observations.
+        n_observations = transformed_observations.shape[0]
+        transformed_log_likelihood = -n_observations / 2 * (np.log(transformed_observations.var(axis=0)) + 1)
+        # But we need the log likelihood of the transformed observations in terms of the original observations to make
+        # sure the likelihoods are comparable across different values of lambda.
+        #   PDFy = fy(y) * dy; y = g(x)
+        #   fy(y) = fx(g(x))
+        #   dy = g(x + dx) - g(x)
+        #   PDFy = fy(y) * dy = fx(g(x)) * (g(x + dx) - g(x)) = fx(g(x)) * dx * (g(x + dx) - g(x)) / dx
+        #   g'(x) = lim d -> 0 : (g(x + dx) - g(x)) / dx
+        #   PDFy = fy(y) * dy = fx(g(x)) * g'(x) * dx
+        # Note that we are using the log likelihood here.
+        log_box_cox_gradient = (self._lambda1 - 1) * np.log(observations + self._lambda2).sum(axis=0)
+        return transformed_log_likelihood + log_box_cox_gradient
+
+    def _box_cox_log_likelihood_gradient(self, observations, transformed_observations):
+        mean = transformed_observations.mean(axis=0)
+        residuals = transformed_observations - mean
+        variance = np.square(residuals).mean(axis=0)
+        # This is the derivative of the univariate Gaussian log likelihood function (the features are assumed to be
+        # linearly independent) w.r.t. the Box-Cox-transformed observations.
+        d_log_likelihood_wrt_transformed_observations = -residuals / variance
+        # The derivative of the log likelihood w.r.t. lambda1.
+        d_log_likelihood_wrt_lambda1 = np.log(observations + self._lambda2)
+        # The derivative of the Box-Cox transformation w.r.t. lambda1.
+        d_box_cox_transform_wrt_lambda1 = np.where(
+            np.logical_not(np.isclose(np.zeros(observations.shape), np.zeros(observations.shape) + self._lambda1)),
+            (1 + np.power(observations + self._lambda2, self._lambda1) *
+             (np.log(observations + self._lambda2) * self._lambda1 - 1)) /
+            (np.square(self._lambda1) + self.epsilon),
+            # When lambda1 = 0, add a term to the transformation function so that it becomes
+            # ln(x + lambda2) + b * lambda1, to avoid an all 0 gradient w.r.t. lambda1 (and hence avoid getting
+            # stuck at lambda1 = 0).
+            np.ones(observations.shape))
+        # Apply the chain rule.
+        return (d_log_likelihood_wrt_lambda1 +
+                d_box_cox_transform_wrt_lambda1 * d_log_likelihood_wrt_transformed_observations).sum(axis=0)
+
+    def _fit(self, observations_df, labels_sr):
+        observations = observations_df.values
+        self._lambda2 = np.maximum(np.full((observations.shape[1]), self.epsilon), -observations.min(axis=0))
+        # Initialize lambda1 to random values in the range of [-1, 1).
+        self._lambda1 = np.random.random(self._lambda2.shape) * 2 - 1
+        # Maximize the log of the Gaussian likelihood function using gradient ascent.
+        for i in range(self.iterations):
+            transformed_observations = self._box_cox_transform(observations)
+            gradient = self._box_cox_log_likelihood_gradient(observations, transformed_observations)
+            if np.all(np.absolute(gradient) <= self.min_gradient):
+                break
+            self._lambda1 += gradient * self.step_size
+
+    def _transform(self, observations_df):
+        return self._box_cox_transform(observations_df.values)

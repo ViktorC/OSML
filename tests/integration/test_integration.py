@@ -69,7 +69,7 @@ def test_classification_accuracy(data_set, model, min_accuracy):
 
 
 @pytest.mark.parametrize('data_set,model,min_f1_score', [
-    (osd.ExamDataSet('data/exam/ex4x.dat', 'data/exam/ex4y.dat'), osp.LogisticRegression(), .6),
+    (osd.ExamDataSet('data/exam/ex4x.dat', 'data/exam/ex4y.dat'), osp.LogisticRegression(), .55),
     (osd.TitanicDataSet('data/titanic/titanic.csv'), osp.LogisticRegression(), .6),
     (osd.TitanicDataSet('data/titanic/titanic.csv'), osp.LogisticRidgeRegression(), .6),
     (osd.MushroomDataSet('data/mushroom/mushroom.csv'), osp.BoostedTreesBinaryClassification(number_of_models=5), .8)
