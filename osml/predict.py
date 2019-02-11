@@ -211,6 +211,65 @@ class BinaryClassificationModel(PredictiveModel):
         n_true_pos_predictions = predictions_sr[labels_sr == 1].sum()
         return float(n_true_pos_predictions) / n_pos_labels
 
+    def evaluate_fall_out(self, predictions_sr, labels_sr):
+        """
+        Evaluates the fall out of the predictions (false positive predictions / all negatives).
+
+        Args:
+            predictions_sr: A series of predictions.
+            labels_sr: A series of target values where each element is the label of the corresponding element in the
+            series of predictions.
+
+        Returns:
+            A scalar measure of the predictions' fall out.
+
+        Raises:
+            ValueError: If the predictions or labels are empty or do not match in length or do not have the expected
+            data type.
+        """
+        if predictions_sr.count() != labels_sr.count():
+            raise ValueError
+        self._validate_labels(predictions_sr)
+        self._validate_labels(labels_sr)
+        n_neg_labels = len(labels_sr[labels_sr == 0])
+        n_false_pos_predictions = predictions_sr[labels_sr != 1].sum()
+        return float(n_false_pos_predictions) / n_neg_labels
+
+    def evaluate_receiver_operating_characteristic(self, predicted_probabilities_sr, labels_sr,
+                                                   threshold_increment=.01):
+        """
+        Computes the receiver operating characteristic curve using a preset threshold increment.
+
+        Args:
+            predicted_probabilities_sr: A series of predicted probabilities.
+            labels_sr: A series of target values where each element is the label of the corresponding element in the
+            series of predictions.
+            threshold_increment: The value by which the predictions threshold should be incremented to calculate the
+            ROC curve.
+
+        Returns:
+            A list of tuples containing the threshold, recall, and fall-out values; and a scalar representing the area
+            under the curve.
+
+        Raises:
+            ValueError: If the threshold increment is not between 0 and 1.
+        """
+        if not 0 < threshold_increment < 1:
+            raise ValueError
+        roc = []
+        auc = .0
+        n_observations = 0
+        for threshold in np.arange(0., 1. + threshold_increment, threshold_increment):
+            predictions_sr = pd.Series(np.where(predicted_probabilities_sr.values >= threshold, 1, 0),
+                                       dtype=labels_sr.dtype)
+            recall = self.evaluate_recall(predictions_sr, labels_sr)
+            fall_out = self.evaluate_fall_out(predictions_sr, labels_sr)
+            roc.append((threshold, recall, fall_out))
+            auc += recall
+            n_observations += 1
+        auc /= n_observations
+        return roc, auc
+
 
 def _bias_trick(observations_df):
     observations = observations_df.values
@@ -560,8 +619,8 @@ class DiscriminantAnalysis(ClassificationModel):
             n_observations = len(respective_observations_df.index)
             class_mean = respective_observations_df.mean(axis=0).values
             self._mean_by_class[klass] = class_mean
-            class_spread = respective_observations_df.values - class_mean
-            class_covariance_matrix = class_spread.T @ class_spread
+            class_residuals = respective_observations_df.values - class_mean
+            class_covariance_matrix = class_residuals.T @ class_residuals
             self._update_covariance_estimates(class_covariance_matrix, klass, n_observations)
         self._finalize_covariance_estimates(total_n_observations)
 
