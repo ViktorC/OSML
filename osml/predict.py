@@ -258,16 +258,18 @@ class BinaryClassificationModel(PredictiveModel):
             raise ValueError
         roc = []
         auc = .0
-        n_observations = 0
+        last_recall = None
+        last_fall_out = None
         for threshold in np.arange(0., 1. + threshold_increment, threshold_increment):
             predictions_sr = pd.Series(np.where(predicted_probabilities_sr.values >= threshold, 1, 0),
                                        dtype=labels_sr.dtype)
             recall = self.evaluate_recall(predictions_sr, labels_sr)
             fall_out = self.evaluate_fall_out(predictions_sr, labels_sr)
             roc.append((threshold, recall, fall_out))
-            auc += recall
-            n_observations += 1
-        auc /= n_observations
+            if last_recall and last_fall_out:
+                auc += (recall + last_recall) / 2 * (last_fall_out - fall_out)
+            last_recall = recall
+            last_fall_out = fall_out
         return roc, auc
 
 
@@ -408,7 +410,6 @@ class LogisticRegression(BinaryClassificationModel):
         labels = labels_sr.values
         self._beta = np.zeros(observations.shape[1], )
         for i in range(self.iterations):
-            print(i)
             predictions = _logistic_function(observations @ self._beta)
             first_derivative = self._gradient(observations_trans, predictions, labels)
             if np.all(np.absolute(first_derivative) <= self.min_gradient):
@@ -1395,3 +1396,17 @@ class BoostedTreesRegression(GradientBoostingRegression):
                                              feature_sample_size_function=feature_sample_size_function),
                       number_of_models, sampling_factor, min_gradient, max_step_size, step_size_decay_factor,
                       armijo_factor)
+
+
+import osml.data as osd
+import osml.transform as ost
+
+data_set = osd.IrisDataSet('../data/iris/iris.csv')
+transformer = ost.Standardization()
+predictor = RandomForestClassification(number_of_models=256)
+
+predictor.fit(transformer.fit_transform(data_set.get_training_observations(), None), data_set.get_training_labels())
+
+predictions = predictor.predict(transformer.transform(data_set.get_test_observations()))
+accuracy = predictor.evaluate(predictions, data_set.get_test_labels())
+print('accuracy:', accuracy)

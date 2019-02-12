@@ -27,6 +27,25 @@ class TransformativeModel(osm.Model):
         self._validate_observations(observations_df)
         return pd.DataFrame(self._transform(observations_df))
 
+    def fit_transform(self, observations_df, labels_sr):
+        """
+        It fits the model to the data and establishes the parameter estimates, if any, and transforms the observations
+        using the parameter estimates.
+
+        Args:
+            observations_df: A 2D frame of data points where each column is a feature and each row is an observation.
+            labels_sr: A series of target values where each element is the label of the corresponding row in the data
+            frame of observations. It can be None if the model is unsupervised.
+
+        Returns:
+            The transformed data frame of observations.
+
+        Raises:
+            ValueError: If the number of observations is 0 or it does not match the number of labels.
+        """
+        self.fit(observations_df, labels_sr)
+        return self.transform(observations_df)
+
 
 class Centering(TransformativeModel):
     """

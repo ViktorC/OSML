@@ -42,15 +42,19 @@ class Model:
         Args:
             observations_df: A 2D frame of data points where each column is a feature and each row is an observation.
             labels_sr: A series of target values where each element is the label of the corresponding row in the data
-            frame of observations.
+            frame of observations. It can be None if the model is unsupervised.
 
         Raises:
-            ValueError: If the number of observations is 0 or it does not match the number of labels.
+            ValueError: If the number of observations is 0 or it does not match the number of labels (unless no labels
+            are provided).
         """
         self._observation_types = observations_df.dtypes
-        self._label_type = labels_sr.dtype
-        self._label_name = labels_sr.name
-        self._validate_observations_and_labels(observations_df, labels_sr)
+        if labels_sr is not None:
+            self._label_type = labels_sr.dtype
+            self._label_name = labels_sr.name
+            self._validate_observations_and_labels(observations_df, labels_sr)
+        else:
+            self._validate_observations(observations_df)
         return self._fit(observations_df, labels_sr)
 
 
