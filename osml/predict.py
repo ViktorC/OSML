@@ -1396,17 +1396,3 @@ class BoostedTreesRegression(GradientBoostingRegression):
                                              feature_sample_size_function=feature_sample_size_function),
                       number_of_models, sampling_factor, min_gradient, max_step_size, step_size_decay_factor,
                       armijo_factor)
-
-
-import osml.data as osd
-import osml.transform as ost
-
-data_set = osd.IrisDataSet('../data/iris/iris.csv')
-transformer = ost.Standardization()
-predictor = RandomForestClassification(number_of_models=256)
-
-predictor.fit(transformer.fit_transform(data_set.get_training_observations(), None), data_set.get_training_labels())
-
-predictions = predictor.predict(transformer.transform(data_set.get_test_observations()))
-accuracy = predictor.evaluate(predictions, data_set.get_test_labels())
-print('accuracy:', accuracy)
