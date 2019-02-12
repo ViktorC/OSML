@@ -6,7 +6,7 @@ The primary components of the library are the machine learning models. They can 
 
 ### Transformative
 
-Transformative models can be fitted to data sets and be used to perform transformations on new data sets using the parameters learnt from the data sets they were fitted to. The most common use case of such models is pre-processing. Most transformative models use unsupervised learning The transformative models provided by OSML are as follows:
+Transformative models can be fitted to data sets and be used to perform transformations on new data sets using the parameters learnt from the ones they were fitted to. The most common use case of such models is pre-processing. Most transformative models use unsupervised learning. The transformative models provided by OSML are as follows.
 
 | Model                      | Objectives                                                                |
 | -------------------------- | ------------------------------------------------------------------------- |
