@@ -698,36 +698,29 @@ class KNearestNeighbors(PredictiveModel):
 
     https://epub.ub.uni-muenchen.de/1769/1/paper_399.pdf
     """
-    def __init__(self, k, rbf_gamma, standardize):
+    def __init__(self, k, rbf_gamma):
         super(KNearestNeighbors, self).__init__()
         if k is None or k < 1:
             raise ValueError
         if rbf_gamma <= 0:
             raise ValueError
-        if not isinstance(standardize, bool):
-            raise ValueError
         self.k = k
         self.rbf_gamma = rbf_gamma
-        self.standardize = standardize
         self._observations_mean = None
         self._observations_sd = None
-        self._preprocessed_observations = None
+        self._observations = None
         self._labels = None
 
     def _distances(self, observation):
         # Simple Euclidian distance.
-        return np.sqrt(np.square(self._preprocessed_observations - observation).sum(axis=1))
+        return np.sqrt(np.square(self._observations - observation).sum(axis=1))
 
     def _weight(self, distance):
         # Radial basis function kernel.
         return math.exp(-self.rbf_gamma * (distance ** 2))
 
     def _select_weighted_nearest_neighbors(self, observation):
-        if self.standardize:
-            preprocessed_observation = (observation - self._observations_mean) / self._observations_sd
-        else:
-            preprocessed_observation = observation
-        distances = self._distances(preprocessed_observation)
+        distances = self._distances(observation)
         k_plus_1_nn_indices = np.argpartition(distances, self.k + 1)[:self.k + 1]
         k_plus_1_nn = pd.Series(distances[k_plus_1_nn_indices], index=k_plus_1_nn_indices)
         k_plus_1_nn = k_plus_1_nn.sort_values(ascending=False)
@@ -748,12 +741,7 @@ class KNearestNeighbors(PredictiveModel):
     def _fit(self, observations_df, labels_sr):
         if len(observations_df.index) < self.k + 1:
             raise ValueError
-        if self.standardize:
-            self._observations_mean = observations_df.values.mean(axis=0)
-            self._observations_sd = np.sqrt(np.square(observations_df.values - self._observations_mean).mean(axis=0))
-            self._preprocessed_observations = (observations_df.values - self._observations_mean) / self._observations_sd
-        else:
-            self._preprocessed_observations = observations_df.values
+        self._observations = observations_df.values
         self._labels = labels_sr.values
 
     def _test(self, observations_df, labels_sr):
@@ -764,8 +752,8 @@ class KNearestNeighborsRegression(KNearestNeighbors, RegressionModel):
     """
     A weighted k-nearest neighbors regression model.
     """
-    def __init__(self, k=7, rbf_gamma=1, standardize=True):
-        KNearestNeighbors.__init__(self, k, rbf_gamma, standardize)
+    def __init__(self, k=7, rbf_gamma=1):
+        KNearestNeighbors.__init__(self, k, rbf_gamma)
         RegressionModel.__init__(self)
 
     def _predict(self, observations_df):
@@ -784,8 +772,8 @@ class KNearestNeighborsClassification(KNearestNeighbors, ClassificationModel):
     """
     A weighted k-nearest neighbors classification model.
     """
-    def __init__(self, k=7, rbf_gamma=1, standardize=True):
-        KNearestNeighbors.__init__(self, k, rbf_gamma, standardize)
+    def __init__(self, k=7, rbf_gamma=1):
+        KNearestNeighbors.__init__(self, k, rbf_gamma)
         ClassificationModel.__init__(self)
 
     def _predict(self, observations_df):
