@@ -129,7 +129,7 @@ class BinaryClassificationModel(PredictiveModel):
     def __init__(self):
         super(BinaryClassificationModel, self).__init__()
 
-    def _predict_probabilities(self, observations_df: pd.DataFrame) -> np.array:
+    def _fuzzy_predict(self, observations_df: pd.DataFrame) -> np.array:
         pass
 
     def _validate_labels(self, labels_sr):
@@ -138,7 +138,7 @@ class BinaryClassificationModel(PredictiveModel):
             raise ValueError
 
     def _predict(self, observations_df):
-        return np.rint(self._predict_probabilities(observations_df))
+        return np.rint(self._fuzzy_predict(observations_df))
 
     def _evaluate(self, predictions_sr, labels_sr):
         # F1 score.
@@ -146,22 +146,23 @@ class BinaryClassificationModel(PredictiveModel):
         recall = self.evaluate_recall(predictions_sr, labels_sr)
         return 2 * precision * recall / (precision + recall)
 
-    def predict_probabilities(self, observations_df):
+    def fuzzy_predict(self, observations_df):
         """
-        Predicts the probabilities of the observations belonging to the positive class.
+        Makes fuzzy predictions about the observations belonging to the positive class.
 
         Args:
             observations_df: A 2D frame of data points where each column is a feature and each row is an observation.
 
         Returns:
-            A series of values where each row is the predicted class probability of the corresponding observation.
+            A series of values where each row is the predicted fuzzy positive class membership of the corresponding
+            observation.
 
         Raises:
             ValueError: If the number of observations is 0 or it does not match the number of labels. Or if the types of
             the features are not the same as those of the data the model was fit to.
         """
         self._validate_observations(observations_df)
-        return pd.Series(self._predict_probabilities(observations_df), dtype=np.float_)
+        return pd.Series(self._fuzzy_predict(observations_df), dtype=np.float_)
 
     def evaluate_precision(self, predictions_sr, labels_sr):
         """
@@ -235,13 +236,12 @@ class BinaryClassificationModel(PredictiveModel):
         n_false_pos_predictions = predictions_sr[labels_sr != 1].sum()
         return float(n_false_pos_predictions) / n_neg_labels
 
-    def evaluate_receiver_operating_characteristic(self, predicted_probabilities_sr, labels_sr,
-                                                   threshold_increment=.01):
+    def evaluate_receiver_operating_characteristic(self, fuzzy_predictions_sr, labels_sr, threshold_increment=.01):
         """
         Computes the receiver operating characteristic curve using a preset threshold increment.
 
         Args:
-            predicted_probabilities_sr: A series of predicted probabilities.
+            fuzzy_predictions_sr: A series of fuzzy class membership predictions.
             labels_sr: A series of target values where each element is the label of the corresponding element in the
             series of predictions.
             threshold_increment: The value by which the predictions threshold should be incremented to calculate the
@@ -261,7 +261,7 @@ class BinaryClassificationModel(PredictiveModel):
         last_recall = None
         last_fall_out = None
         for threshold in np.arange(0., 1. + threshold_increment, threshold_increment):
-            predictions_sr = pd.Series(np.where(predicted_probabilities_sr.values >= threshold, 1, 0),
+            predictions_sr = pd.Series(np.where(fuzzy_predictions_sr.values >= threshold, 1, 0),
                                        dtype=labels_sr.dtype)
             recall = self.evaluate_recall(predictions_sr, labels_sr)
             fall_out = self.evaluate_fall_out(predictions_sr, labels_sr)
@@ -418,7 +418,7 @@ class LogisticRegression(BinaryClassificationModel):
             second_derivative = self._hessian(observations, observations_trans, predictions)
             self._beta = self._beta - np.linalg.inv(second_derivative) @ first_derivative
 
-    def _predict_probabilities(self, observations_df):
+    def _fuzzy_predict(self, observations_df):
         return _logistic_function(_bias_trick(observations_df) @ self._beta)
 
     def _test(self, observations_df, labels_sr):
@@ -1062,7 +1062,7 @@ class MultiBinaryClassification(ClassificationModel):
 
     @staticmethod
     def _make_class_probability_prediction(binary_classifier, observations_df):
-        return binary_classifier.predict_probabilities(observations_df)
+        return binary_classifier.fuzzy_predict(observations_df)
 
     def _fit(self, observations_df, labels_sr):
         self._classes = labels_sr.unique()
@@ -1285,7 +1285,7 @@ class GradientBoostingBinaryClassification(GradientBoosting, BinaryClassificatio
     def _d_loss_wrt_raw_predictions(self, raw_predictions_sr, labels_sr):
         return pd.Series((_logistic_function(raw_predictions_sr.values) - labels_sr.values) / labels_sr.count())
 
-    def _predict_probabilities(self, observations_df):
+    def _fuzzy_predict(self, observations_df):
         return _logistic_function(self._raw_predict(observations_df))
 
 
