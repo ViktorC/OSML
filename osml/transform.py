@@ -85,7 +85,7 @@ class Standardization(TransformativeModel):
 
 
 def _select_k_top_eigen_vectors(eigen_values, eigen_vectors, k):
-    sorted_indices = np.flip(np.argsort(eigen_values))
+    sorted_indices = np.flip(np.argsort(eigen_values), axis=0)
     sorted_indices = sorted_indices[:min(k, len(sorted_indices))]
     return eigen_values[sorted_indices], eigen_vectors[:, sorted_indices]
 

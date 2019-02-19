@@ -32,7 +32,7 @@ def test_model_loss(data_set, model, max_test_loss):
     (osd.BostonDataSet('data/boston/boston.csv'), osp.LinearRegression(), 7.2),
     (osd.BostonDataSet('data/boston/boston.csv'), osp.LinearRidgeRegression(), 7.6),
     (osd.BostonDataSet('data/boston/boston.csv'), osp.LinearLassoRegression(), 7.6),
-    (osd.BostonDataSet('data/boston/boston.csv'), osp.KNearestNeighborsRegression(), 7.2),
+    (osd.BostonDataSet('data/boston/boston.csv'), osp.KNearestNeighborsRegression(), 7.6),
     (osd.BostonDataSet('data/boston/boston.csv'), osp.DecisionTreeRegression(), 6.8),
     (osd.BostonDataSet('data/boston/boston.csv'), osp.BaggedTreesRegression(number_of_models=5), 6.6),
     (osd.BostonDataSet('data/boston/boston.csv'), osp.RandomForestRegression(number_of_models=5), 6.6),
