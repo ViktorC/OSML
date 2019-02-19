@@ -2,4 +2,5 @@ setuptools
 pytest
 numpy
 pandas
+scipy
 sklearn

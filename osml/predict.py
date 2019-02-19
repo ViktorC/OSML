@@ -1,11 +1,13 @@
 import copy
 import math
 import multiprocessing as mp
-import numpy as np
 import operator
-import pandas as pd
 import random
 import typing
+
+import numpy as np
+import pandas as pd
+
 import osml.model as osm
 
 

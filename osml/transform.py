@@ -1,5 +1,8 @@
+import math
+
 import numpy as np
 import pandas as pd
+
 import osml.model as osm
 
 
@@ -198,28 +201,35 @@ class BoxCoxTransformation(TransformativeModel):
     """
     A Box-Cox transformation to make individual features more normally distributed.
     """
-    def __init__(self, iterations=20, step_size=1e-2, min_gradient=1e-4):
+    def __init__(self, iterations=20, init_bracket_width=1, min_bracket_width=1e-4, min_gradient=1e-4):
         super(BoxCoxTransformation, self).__init__()
         if iterations <= 0:
             raise ValueError
-        if step_size <= 0:
+        if init_bracket_width <= 0:
+            raise ValueError
+        if min_bracket_width <= 0:
+            raise ValueError
+        if init_bracket_width <= min_bracket_width:
             raise ValueError
         if min_gradient < 0:
             raise ValueError
         self.iterations = iterations
-        self.step_size = step_size
+        self.init_bracket_width = init_bracket_width
+        self.min_bracket_width = min_bracket_width
         self.min_gradient = min_gradient
         self._lambda1 = None
         self._lambda2 = None
 
-    def _box_cox_transform(self, observations):
-        return np.where(np.isclose(np.zeros(observations.shape), np.zeros(observations.shape) + self._lambda1),
-                        np.log(observations + self._lambda2),
-                        (np.power(observations + self._lambda2, self._lambda1) - 1) / (self._lambda1 + self.epsilon))
+    @staticmethod
+    def _box_cox_transform(observations, lambda1, lambda2):
+        return np.where(np.isclose(np.zeros(observations.shape), np.zeros(observations.shape) + lambda1),
+                        np.log(observations + lambda2),
+                        (np.power(observations + lambda2, lambda1) - 1) / lambda1)
 
-    def _box_cox_log_likelihood(self, observations):
+    @staticmethod
+    def _box_cox_log_likelihood(observations, lambda1, lambda2):
         # Apply the Box-Cox transform.
-        transformed_observations = self._box_cox_transform(observations)
+        transformed_observations = BoxCoxTransformation._box_cox_transform(observations, lambda1, lambda2)
         # The log likelihood of the transformed observations.
         n_observations = transformed_observations.shape[0]
         transformed_log_likelihood = -n_observations / 2 * (np.log(transformed_observations.var(axis=0)) + 1)
@@ -232,7 +242,7 @@ class BoxCoxTransformation(TransformativeModel):
         #   g'(x) = lim d -> 0 : (g(x + dx) - g(x)) / dx
         #   PDFy = fy(y) * dy = fx(g(x)) * g'(x) * dx
         # Note that we are using the log likelihood here.
-        log_box_cox_gradient = (self._lambda1 - 1) * np.log(observations + self._lambda2).sum(axis=0)
+        log_box_cox_gradient = (lambda1 - 1) * np.log(observations + lambda2).sum(axis=0)
         return transformed_log_likelihood + log_box_cox_gradient
 
     def _box_cox_log_likelihood_gradient(self, observations, transformed_observations):
@@ -258,18 +268,51 @@ class BoxCoxTransformation(TransformativeModel):
         return (d_log_likelihood_wrt_lambda1 +
                 d_box_cox_transform_wrt_lambda1 * d_log_likelihood_wrt_transformed_observations).sum(axis=0)
 
+    phi = (1 + math.sqrt(5)) / 2
+
+    @staticmethod
+    def _calculate_breaking_points(a, b):
+        golden_section = (b - a) / BoxCoxTransformation.phi
+        c = b - golden_section
+        d = a + golden_section
+        return c, d
+
+    def _calculate_box_cox_log_likelihood(self, observations, ascent_direction, step_size, ind):
+        observations_ind = observations[:, ind]
+        lambda1_ind = self._lambda1[ind] + step_size * ascent_direction[ind]
+        lambda2_ind = self._lambda2[ind]
+        return self._box_cox_log_likelihood(observations_ind, lambda1_ind, lambda2_ind)
+
+    def _golden_section_line_search(self, observations, ascent_direction):
+        step_sizes = np.zeros(self._lambda1.shape)
+        for i in range(len(step_sizes)):
+            a = 0.
+            b = self.init_bracket_width
+            c, d = self._calculate_breaking_points(a, b)
+            while abs(c - d) >= self.min_bracket_width:
+                log_likelihood_c = self._calculate_box_cox_log_likelihood(observations, ascent_direction, c, i)
+                log_likelihood_d = self._calculate_box_cox_log_likelihood(observations, ascent_direction, d, i)
+                if log_likelihood_c > log_likelihood_d:
+                    b = d
+                else:
+                    a = c
+                c, d = self._calculate_breaking_points(a, b)
+            step_sizes[i] = (a + b) / 2
+        return step_sizes
+
     def _fit(self, observations_df, labels_sr):
         observations = observations_df.values
-        self._lambda2 = np.maximum(np.full((observations.shape[1]), self.epsilon), -observations.min(axis=0))
-        # Initialize lambda1 to random values in the range of [-1, 1).
-        self._lambda1 = np.random.random(self._lambda2.shape) * 2 - 1
+        self._lambda2 = np.maximum(np.zeros((observations.shape[1])), -observations.min(axis=0)) + self.epsilon
+        # Initialize lambda1 to random values in the range of [-5, 5).
+        self._lambda1 = np.random.random(self._lambda2.shape) * 10 - 5
         # Maximize the log of the Gaussian likelihood function using gradient ascent.
         for i in range(self.iterations):
-            transformed_observations = self._box_cox_transform(observations)
+            transformed_observations = self._box_cox_transform(observations, self._lambda1, self._lambda2)
             gradient = self._box_cox_log_likelihood_gradient(observations, transformed_observations)
             if np.all(np.absolute(gradient) <= self.min_gradient):
                 break
-            self._lambda1 += gradient * self.step_size
+            step_sizes = self._golden_section_line_search(observations, gradient)
+            self._lambda1 += gradient * step_sizes
 
     def _transform(self, observations_df):
-        return self._box_cox_transform(observations_df.values)
+        return self._box_cox_transform(observations_df.values, self._lambda1, self._lambda2)
