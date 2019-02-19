@@ -19,7 +19,7 @@ import osml.predict as osp
     (osd.TitanicDataSet('data/titanic/titanic.csv'), osp.LogisticRegression(), .8),
     (osd.TitanicDataSet('data/titanic/titanic.csv'), osp.LogisticRidgeRegression(), 1.),
     (osd.BostonDataSet('data/boston/boston.csv'), osp.GradientBoostingRegression(
-        base_model=osp.LinearLassoRegression(iterations=100), number_of_models=10), 44),
+        base_model=osp.LinearLassoRegression(iterations=100), number_of_models=10), 46.),
     (osd.MushroomDataSet('data/mushroom/mushroom.csv'), osp.BoostedTreesBinaryClassification(number_of_models=5), .6)
 ])
 def test_model_loss(data_set, model, max_test_loss):
