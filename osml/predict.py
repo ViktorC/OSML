@@ -107,23 +107,6 @@ class RegressionModel(PredictiveModel):
         return np.sqrt(np.square(predictions_sr.values - labels_sr.values).mean())
 
 
-class ClassificationModel(PredictiveModel):
-    """
-    An abstract base class for classification models.
-    """
-    def __init__(self):
-        super(ClassificationModel, self).__init__()
-
-    def _validate_labels(self, labels_sr):
-        super(ClassificationModel, self)._validate_labels(labels_sr)
-        if not osm.is_categorical(labels_sr.dtype):
-            raise ValueError
-
-    def _evaluate(self, predictions_sr, labels_sr):
-        # Accuracy.
-        return len([p for i, p in predictions_sr.iteritems() if p == labels_sr[i]]) / predictions_sr.count()
-
-
 class BinaryClassificationModel(PredictiveModel):
     """
     An abstract base class for binary classification models.
@@ -273,6 +256,56 @@ class BinaryClassificationModel(PredictiveModel):
             last_recall = recall
             last_fall_out = fall_out
         return roc, auc
+
+
+class ClassificationModel(PredictiveModel):
+    """
+    An abstract base class for classification models.
+    """
+    def __init__(self):
+        super(ClassificationModel, self).__init__()
+
+    def _validate_labels(self, labels_sr):
+        super(ClassificationModel, self)._validate_labels(labels_sr)
+        if not osm.is_categorical(labels_sr.dtype):
+            raise ValueError
+
+    def _evaluate(self, predictions_sr, labels_sr):
+        # Accuracy.
+        return len([p for i, p in predictions_sr.iteritems() if p == labels_sr[i]]) / predictions_sr.count()
+
+
+class GenerativeClassificationModel(ClassificationModel):
+    """
+    An abstract base class for generative classification models.
+    """
+    def __init__(self):
+        super(GenerativeClassificationModel, self).__init__()
+        self._classes = None
+
+    def _predict_class_probabilities(self, observations_df: pd.DataFrame) -> np.array:
+        pass
+
+    def _predict(self, observations_df):
+        class_probabilities = self._predict_class_probabilities(observations_df)
+        predicted_class_indices = np.argmax(class_probabilities, axis=1)
+        return np.array([self._classes[i] for i in predicted_class_indices])
+
+    def predict_class_probabilities(self, observations_df):
+        """
+        Predicts the probabilities of the observations belonging to each class.
+
+        Args:
+            observations_df: A 2D frame of data points where each column is a feature and each row is an observation.
+        Returns:
+            A 2D data frame where each row is the predicted class probabilities of the corresponding observation and
+            each column represents a class.
+        Raises:
+            ValueError: If the number of observations is 0 or it does not match the number of labels. Or if the types of
+            the features are not the same as those of the data the model was fit to.
+        """
+        self._validate_observations(observations_df)
+        return pd.DataFrame(self._predict_class_probabilities(observations_df), columns=self._classes, dtype=np.float_)
 
 
 def _bias_trick(observations_df):
@@ -451,7 +484,7 @@ class LogisticRidgeRegression(LogisticRegression):
                self.alpha * np.square(self._beta).sum()
 
 
-class NaiveBayes(ClassificationModel):
+class NaiveBayes(GenerativeClassificationModel):
     """
     A naive Bayes classification model.
     """
@@ -460,7 +493,6 @@ class NaiveBayes(ClassificationModel):
         if laplace_smoothing is None or laplace_smoothing < 0:
             raise ValueError
         self.laplace_smoothing = laplace_smoothing
-        self._classes = None
         self._class_priors = None
         self._feature_statistics = None
 
@@ -481,25 +513,20 @@ class NaiveBayes(ClassificationModel):
             else:
                 raise ValueError
 
-    def _predict(self, observations_df):
-        predictions = np.zeros((len(observations_df.index)))
+    def _predict_class_probabilities(self, observations_df):
+        class_probabilities = np.zeros((len(observations_df.index), len(self._classes)))
         for i, row in enumerate(observations_df.itertuples()):
-            highest_class_probability = -1
-            prediction = None
             probability_of_evidence = 1
             for j, feature_stats in enumerate(self._feature_statistics):
                 probability_of_evidence *= feature_stats.get_probability(row[j + 1])
-            for label_class in self._classes:
+            for j, label_class in enumerate(self._classes):
                 class_prior = self._class_priors[label_class]
                 likelihood = 1
-                for j, feature_stats in enumerate(self._feature_statistics):
-                    likelihood *= feature_stats.get_likelihood(row[j + 1], label_class)
+                for k, feature_stats in enumerate(self._feature_statistics):
+                    likelihood *= feature_stats.get_likelihood(row[k + 1], label_class)
                 class_probability = likelihood * class_prior / probability_of_evidence
-                if class_probability > highest_class_probability:
-                    highest_class_probability = class_probability
-                    prediction = label_class
-            predictions[i] = prediction
-        return predictions
+                class_probabilities[i, j] = class_probability
+        return class_probabilities
 
     def _test(self, observations_df, labels_sr):
         return None
@@ -586,7 +613,7 @@ class NaiveBayes(ClassificationModel):
             return self.calculate_probability(value, likelihood_tuple[0], likelihood_tuple[1], self.laplace_smoothing)
 
 
-class DiscriminantAnalysis(ClassificationModel):
+class DiscriminantAnalysis(GenerativeClassificationModel):
     """
     A discriminant analysis classification model base class.
 
@@ -594,7 +621,6 @@ class DiscriminantAnalysis(ClassificationModel):
     """
     def __init__(self):
         super(DiscriminantAnalysis, self).__init__()
-        self._classes = None
         self._class_priors = None
         self._mean_by_class = None
 
@@ -617,28 +643,23 @@ class DiscriminantAnalysis(ClassificationModel):
         self._class_priors = labels_sr.value_counts().astype(np.float_) / labels_sr.count()
         self._mean_by_class = {}
         self._init_covariance_estimates(n_features)
-        for klass in self._classes:
-            respective_observations_df = observations_df.reindex(labels_sr[labels_sr == klass].index)
+        for label_class in self._classes:
+            respective_observations_df = observations_df.reindex(labels_sr[labels_sr == label_class].index)
             n_observations = len(respective_observations_df.index)
             class_mean = respective_observations_df.mean(axis=0).values
-            self._mean_by_class[klass] = class_mean
+            self._mean_by_class[label_class] = class_mean
             class_residuals = respective_observations_df.values - class_mean
             class_covariance_matrix = class_residuals.T @ class_residuals
-            self._update_covariance_estimates(class_covariance_matrix, klass, n_observations)
+            self._update_covariance_estimates(class_covariance_matrix, label_class, n_observations)
         self._finalize_covariance_estimates(total_n_observations)
 
-    def _predict(self, observations_df):
-        predictions = np.zeros((len(observations_df.index)))
+    def _predict_class_probabilities(self, observations_df):
+        class_probabilities = np.zeros((len(observations_df.index), len(self._classes)))
         for i, row in observations_df.iterrows():
-            highest_relative_probability = None
-            prediction = None
-            for klass in self._classes:
-                relative_probability = self._calculate_relative_probability(row, klass)
-                if highest_relative_probability is None or relative_probability > highest_relative_probability:
-                    highest_relative_probability = relative_probability
-                    prediction = klass
-            predictions[i] = prediction
-        return predictions
+            for j, label_class in enumerate(self._classes):
+                relative_probability = self._calculate_relative_probability(row, label_class)
+                class_probabilities[i, j] = relative_probability
+        return class_probabilities
 
     def _test(self, observations_df, labels_sr):
         return None
@@ -655,16 +676,16 @@ class LinearDiscriminantAnalysis(DiscriminantAnalysis):
     def _init_covariance_estimates(self, n_features):
         self._inverse_common_covariance_matrix = np.zeros((n_features, n_features))
 
-    def _update_covariance_estimates(self, covariance_matrix, klass, n_observations):
+    def _update_covariance_estimates(self, covariance_matrix, label_class, n_observations):
         self._inverse_common_covariance_matrix += covariance_matrix
 
     def _finalize_covariance_estimates(self, total_n_observations):
         self._inverse_common_covariance_matrix = np.linalg.inv(self._inverse_common_covariance_matrix /
                                                                (total_n_observations - len(self._classes)))
 
-    def _calculate_relative_probability(self, observation_sr, klass):
-        mean = self._mean_by_class[klass]
-        return np.log(self._class_priors[klass]) - \
+    def _calculate_relative_probability(self, observation_sr, label_class):
+        mean = self._mean_by_class[label_class]
+        return np.log(self._class_priors[label_class]) - \
             .5 * (mean @ self._inverse_common_covariance_matrix) @ mean.T + \
             (observation_sr.values @ self._inverse_common_covariance_matrix) @ mean.T
 
@@ -680,14 +701,14 @@ class QuadraticDiscriminantAnalysis(DiscriminantAnalysis):
     def _init_covariance_estimates(self, n_features):
         self._inverse_covariance_matrix_by_class = {}
 
-    def _update_covariance_estimates(self, covariance_matrix, klass, n_observations):
-        self._inverse_covariance_matrix_by_class[klass] = np.linalg.inv(covariance_matrix / (n_observations - 1))
+    def _update_covariance_estimates(self, covariance_matrix, label_class, n_observations):
+        self._inverse_covariance_matrix_by_class[label_class] = np.linalg.inv(covariance_matrix / (n_observations - 1))
 
-    def _calculate_relative_probability(self, observation_sr, klass):
+    def _calculate_relative_probability(self, observation_sr, label_class):
         observation = observation_sr.values
-        mean = self._mean_by_class[klass]
-        inverse_covariance_matrix = self._inverse_covariance_matrix_by_class[klass]
-        return np.log(self._class_priors[klass]) - \
+        mean = self._mean_by_class[label_class]
+        inverse_covariance_matrix = self._inverse_covariance_matrix_by_class[label_class]
+        return np.log(self._class_priors[label_class]) - \
             .5 * (mean @ inverse_covariance_matrix) @ mean.T + \
             (observation @ inverse_covariance_matrix) @ mean.T - \
             .5 * ((observation @ inverse_covariance_matrix) @ observation.T -
