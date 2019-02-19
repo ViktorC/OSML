@@ -86,7 +86,7 @@ def test_binary_classification_f1_score(data_set, model, min_f1_score):
     (osd.BostonDataSet('data/boston/boston.csv'), osp.LinearRidgeRegression(), sklm.Ridge(), 1.05, .1),
     (osd.BostonDataSet('data/boston/boston.csv'), osp.LinearLassoRegression(), sklm.Lasso(), 1.15, .15),
     (osd.BostonDataSet('data/boston/boston.csv'), osp.KNearestNeighborsRegression(),
-     sknn.KNeighborsRegressor(n_neighbors=7, weights='distance'), 1.25, .1),
+     sknn.KNeighborsRegressor(n_neighbors=7, weights='distance'), 1.35, .1),
     (osd.BostonDataSet('data/boston/boston.csv'), osp.DecisionTreeRegression(),
      skt.DecisionTreeRegressor(), 1.25, .5),
     (osd.BostonDataSet('data/boston/boston.csv'), osp.BaggedTreesRegression(number_of_models=10),
