@@ -2,7 +2,6 @@ import copy
 import math
 import multiprocessing as mp
 import operator
-import random
 import typing
 
 import numpy as np
@@ -893,7 +892,9 @@ class DecisionTree(PredictiveModel):
         best_impurity = None
         if self.random_feature_selection:
             n_features = len(features)
-            features_to_consider = random.sample(range(n_features), int(self.feature_sample_size_function(n_features)))
+            features_to_consider = np.random.choice(np.arange(n_features),
+                                                    size=int(self.feature_sample_size_function(n_features)),
+                                                    replace=False)
         else:
             features_to_consider = None
         for i, feature in enumerate(features):
@@ -1053,21 +1054,26 @@ class MultiBinaryClassification(ClassificationModel):
     """
     A meta model that uses multiple binary classifiers for multi-class classification.
     """
-    def __init__(self, base_binary_classifier, number_of_processes=1):
+    def __init__(self, base_binary_classifier, number_of_processes=1, seed_range=1000000):
         super(MultiBinaryClassification, self).__init__()
         if not isinstance(base_binary_classifier, BinaryClassificationModel):
             raise ValueError
         if number_of_processes is None or number_of_processes < 1:
             raise ValueError
+        if seed_range < 0:
+            raise ValueError
         self.base_binary_classifier = base_binary_classifier
         self.number_of_processes = number_of_processes
+        self.seed_range = seed_range
         self._classes = None
         self._binary_classifiers = None
 
     @staticmethod
-    def _build_binary_classifier(base_binary_classifier, observations_df, labels_sr, klass):
+    def _build_binary_classifier(base_binary_classifier, observations_df, labels_sr, label_class, seed=None):
+        if seed is not None:
+            np.random.random(seed)
         classifier = copy.deepcopy(base_binary_classifier)
-        binary_labels_sr = labels_sr.apply(lambda label: 1 if label == klass else 0)
+        binary_labels_sr = labels_sr.apply(lambda label: 1 if label == label_class else 0)
         classifier.fit(observations_df, binary_labels_sr)
         return classifier
 
@@ -1080,7 +1086,9 @@ class MultiBinaryClassification(ClassificationModel):
         base = self.base_binary_classifier
         if self.number_of_processes > 1:
             with mp.Pool(min(len(self._classes), self.number_of_processes)) as pool:
-                futures = [pool.apply_async(self._build_binary_classifier, args=(base, observations_df, labels_sr, c))
+                futures = [pool.apply_async(self._build_binary_classifier,
+                                            args=(base, observations_df, labels_sr, c,
+                                                  np.random.randint(self.seed_range)))
                            for c in self._classes]
                 self._binary_classifiers = [f.get() for f in futures]
         else:
@@ -1108,28 +1116,32 @@ class BootstrapAggregating(PredictiveModel):
     """
     A meta model that trains multiple models on random subsets of the training data set sampled with replacement.
     """
-    def __init__(self, base_model, number_of_models, sample_size_function, number_of_processes):
+    def __init__(self, base_model, number_of_models, sample_size_function, number_of_processes, seed_range):
         if base_model is None or not isinstance(base_model, PredictiveModel):
             raise ValueError
         if number_of_models is None or number_of_models < 1:
             raise ValueError
         if number_of_processes is None or number_of_processes < 1:
             raise ValueError
+        if seed_range < 0:
+            raise ValueError
         super(BootstrapAggregating, self).__init__()
         self.base_model = base_model
         self.number_of_models = number_of_models
         self.sample_size_function = sample_size_function if sample_size_function is not None else _identity_function
         self.number_of_processes = min(number_of_models, number_of_processes)
+        self.seed_range = seed_range
         self._models = None
 
     def _aggregate_predictions(self, list_of_predictions_sr: typing.List[pd.Series]) -> pd.Series:
         pass
 
     @staticmethod
-    def _build_model(base_model, sample_size, observations_df, labels_sr):
+    def _build_model(base_model, observations_df, labels_sr, sample_size, seed=None):
+        if seed is not None:
+            np.random.random(seed)
         model = copy.deepcopy(base_model)
-        random.seed()
-        indices = [observations_df.index[random.randint(0, len(observations_df.index) - 1)] for _ in range(sample_size)]
+        indices = np.random.choice(observations_df.index, size=sample_size, replace=True)
         observations_sample_df = observations_df.reindex(indices).reset_index(drop=True)
         labels_sample_sr = labels_sr.reindex(indices).reset_index(drop=True)
         model.fit(observations_sample_df, labels_sample_sr)
@@ -1144,11 +1156,12 @@ class BootstrapAggregating(PredictiveModel):
         if self.number_of_processes > 1:
             with mp.Pool(self.number_of_processes) as pool:
                 futures = [pool.apply_async(self._build_model,
-                                            args=(self.base_model, sample_size, observations_df, labels_sr))
+                                            args=(self.base_model, observations_df, labels_sr, sample_size,
+                                                  np.random.randint(self.seed_range)))
                            for _ in range(self.number_of_models)]
                 self._models = [f.get() for f in futures]
         else:
-            self._models = [self._build_model(self.base_model, sample_size, observations_df, labels_sr)
+            self._models = [self._build_model(self.base_model, observations_df, labels_sr, sample_size)
                             for _ in range(self.number_of_models)]
 
     def _predict(self, observations_df):
@@ -1169,10 +1182,12 @@ class BootstrapAggregatingClassification(BootstrapAggregating, ClassificationMod
     """
     A bootstrap aggregating classification meta model.
     """
-    def __init__(self, base_model, number_of_models, sample_size_function=None, number_of_processes=mp.cpu_count()):
+    def __init__(self, base_model, number_of_models, sample_size_function=None, number_of_processes=mp.cpu_count(),
+                 seed_range=1000000):
         if not isinstance(base_model, ClassificationModel):
             raise ValueError
-        BootstrapAggregating.__init__(self, base_model, number_of_models, sample_size_function, number_of_processes)
+        BootstrapAggregating.__init__(self, base_model, number_of_models, sample_size_function, number_of_processes,
+                                      seed_range)
         ClassificationModel.__init__(self)
 
     def _aggregate_predictions(self, list_of_predictions_sr):
@@ -1184,10 +1199,12 @@ class BootstrapAggregatingRegression(BootstrapAggregating, RegressionModel):
     """
     A bootstrap aggregating regression meta model.
     """
-    def __init__(self, base_model, number_of_models, sample_size_function=None, number_of_processes=mp.cpu_count()):
+    def __init__(self, base_model, number_of_models, sample_size_function=None, number_of_processes=mp.cpu_count(),
+                 seed_range=1000000):
         if not isinstance(base_model, RegressionModel):
             raise ValueError
-        BootstrapAggregating.__init__(self, base_model, number_of_models, sample_size_function, number_of_processes)
+        BootstrapAggregating.__init__(self, base_model, number_of_models, sample_size_function, number_of_processes,
+                                      seed_range)
         RegressionModel.__init__(self)
 
     def _aggregate_predictions(self, list_of_predictions_sr):

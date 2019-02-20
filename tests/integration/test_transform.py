@@ -32,11 +32,11 @@ def test_standardization(data_set, mean_tol, sd_tol):
 
 
 @pytest.mark.parametrize('data_set,whiten,n_components,tol', [
-    (osd.ExamDataSet('data/exam/ex4x.dat', 'data/exam/ex4y.dat', shuffle_data=False), False, 2, 1e-2),
-    (osd.IrisDataSet('data/iris/iris.csv', shuffle_data=False), False, 4, 1e-2),
-    (osd.IrisDataSet('data/iris/iris.csv', shuffle_data=False), True, 4, 1e-2),
-    (osd.IrisDataSet('data/iris/iris.csv', shuffle_data=False), False, 2, 1e-2),
-    (osd.IrisDataSet('data/iris/iris.csv', shuffle_data=False), True, 3, 1e-2)
+    (osd.ExamDataSet('data/exam/ex4x.dat', 'data/exam/ex4y.dat'), False, 2, 1e-2),
+    (osd.IrisDataSet('data/iris/iris.csv'), False, 4, 1e-2),
+    (osd.IrisDataSet('data/iris/iris.csv'), True, 4, 1e-2),
+    (osd.IrisDataSet('data/iris/iris.csv'), False, 2, 1e-2),
+    (osd.IrisDataSet('data/iris/iris.csv'), True, 3, 1e-2)
 ])
 def test_pca(data_set, whiten, n_components, tol):
     observations = data_set.get_training_observations()
@@ -48,7 +48,7 @@ def test_pca(data_set, whiten, n_components, tol):
 
 
 @pytest.mark.parametrize('data_set,n_components,tol', [
-    (osd.IrisDataSet('data/iris/iris.csv', shuffle_data=False), 2, 5e-1)
+    (osd.IrisDataSet('data/iris/iris.csv'), 2, 5e-2)
 ])
 def test_lda(data_set, n_components, tol):
     observations = data_set.get_training_observations()
@@ -70,8 +70,8 @@ def test_lda(data_set, n_components, tol):
 
 
 @pytest.mark.parametrize('data_set,tol', [
-    (osd.ExamDataSet('data/exam/ex4x.dat', 'data/exam/ex4y.dat', shuffle_data=False), 1e-2),
-    (osd.IrisDataSet('data/iris/iris.csv', shuffle_data=False), 1e-2)
+    (osd.ExamDataSet('data/exam/ex4x.dat', 'data/exam/ex4y.dat'), 1e-2),
+    (osd.IrisDataSet('data/iris/iris.csv'), 1e-2)
 ])
 def test_box_cox_transform(data_set, tol):
     observations = data_set.get_training_observations()
