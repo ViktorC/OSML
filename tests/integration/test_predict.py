@@ -2,9 +2,10 @@ import pandas as pd
 import pytest
 import sklearn.discriminant_analysis as skd
 import sklearn.ensemble as ske
-import sklearn.linear_model as sklm
+import sklearn.linear_model as skl
 import sklearn.naive_bayes as sknb
 import sklearn.neighbors as sknn
+import sklearn.svm as sks
 import sklearn.tree as skt
 
 import osml.data as osd
@@ -18,8 +19,9 @@ import osml.predict as osp
     (osd.ExamDataSet('data/exam/ex4x.dat', 'data/exam/ex4y.dat'), osp.LogisticRegression(), 0.32),
     (osd.TitanicDataSet('data/titanic/titanic.csv'), osp.LogisticRegression(), 0.44),
     (osd.TitanicDataSet('data/titanic/titanic.csv'), osp.LogisticRidgeRegression(), 0.58),
+    (osd.ExamDataSet('data/exam/ex4x.dat', 'data/exam/ex4y.dat'), osp.SupportVectorMachine(), 17.1),
     (osd.BostonDataSet('data/boston/boston.csv'), osp.GradientBoostingRegression(
-        base_model=osp.LinearLassoRegression(iterations=100), number_of_models=10), 31.),
+        base_model=osp.LinearLassoRegression(iterations=100), number_of_models=10), 42.5),
     (osd.MushroomDataSet('data/mushroom/mushroom.csv'), osp.BoostedTreesBinaryClassification(number_of_models=5), .52)
 ])
 def test_model_loss(data_set, model, max_test_loss):
@@ -46,22 +48,22 @@ def test_regression_model_error(data_set, model, max_error):
 
 @pytest.mark.parametrize('data_set,model,min_accuracy', [
     (osd.IrisDataSet('data/iris/iris.csv'), osp.NaiveBayes(), .95),
-    (osd.TitanicDataSet('data/titanic/titanic.csv'), osp.NaiveBayes(), .82),
+    (osd.TitanicDataSet('data/titanic/titanic.csv'), osp.NaiveBayes(), .78),
     (osd.MushroomDataSet('data/mushroom/mushroom.csv'), osp.NaiveBayes(), .93),
     (osd.IrisDataSet('data/iris/iris.csv'), osp.LinearDiscriminantAnalysis(), .93),
-    (osd.ExamDataSet('data/exam/ex4x.dat', 'data/exam/ex4y.dat'), osp.LinearDiscriminantAnalysis(), .91),
+    (osd.ExamDataSet('data/exam/ex4x.dat', 'data/exam/ex4y.dat'), osp.LinearDiscriminantAnalysis(), .79),
     (osd.IrisDataSet('data/iris/iris.csv'), osp.QuadraticDiscriminantAnalysis(), .91),
-    (osd.ExamDataSet('data/exam/ex4x.dat', 'data/exam/ex4y.dat'), osp.QuadraticDiscriminantAnalysis(), .91),
-    (osd.IrisDataSet('data/iris/iris.csv'), osp.KNearestNeighborsClassification(), .97),
-    (osd.ExamDataSet('data/exam/ex4x.dat', 'data/exam/ex4y.dat'), osp.KNearestNeighborsClassification(), .79),
+    (osd.ExamDataSet('data/exam/ex4x.dat', 'data/exam/ex4y.dat'), osp.QuadraticDiscriminantAnalysis(), .87),
+    (osd.IrisDataSet('data/iris/iris.csv'), osp.KNearestNeighborsClassification(), .95),
+    (osd.ExamDataSet('data/exam/ex4x.dat', 'data/exam/ex4y.dat'), osp.KNearestNeighborsClassification(), .7),
     (osd.MushroomDataSet('data/mushroom/mushroom.csv'), osp.DecisionTreeClassification(), 1.),
     (osd.IrisDataSet('data/iris/iris.csv'), osp.DecisionTreeClassification(), .91),
-    (osd.TitanicDataSet('data/titanic/titanic.csv'), osp.DecisionTreeClassification(), .78),
+    (osd.TitanicDataSet('data/titanic/titanic.csv'), osp.DecisionTreeClassification(), .76),
     (osd.IrisDataSet('data/iris/iris.csv'), osp.MultiBinaryClassification(
-        base_binary_classifier=osp.LogisticRegression(iterations=100), number_of_processes=3), .97),
+        base_binary_classifier=osp.LogisticRegression(iterations=100), number_of_processes=3), .95),
     (osd.IrisDataSet('data/iris/iris.csv'), osp.BaggedTreesClassification(number_of_models=10), .93),
     (osd.IrisDataSet('data/iris/iris.csv'), osp.RandomForestClassification(number_of_models=10), .91),
-    (osd.IMDBDataSet('data/imdb/ratings.csv'), osp.RandomForestClassification(number_of_models=16), .22)
+    (osd.IMDBDataSet('data/imdb/ratings.csv'), osp.RandomForestClassification(number_of_models=16), .21)
 ])
 def test_classification_accuracy(data_set, model, min_accuracy):
     model.fit(data_set.get_training_observations(), data_set.get_training_labels())
@@ -70,9 +72,11 @@ def test_classification_accuracy(data_set, model, min_accuracy):
 
 
 @pytest.mark.parametrize('data_set,model,min_f1_score', [
-    (osd.ExamDataSet('data/exam/ex4x.dat', 'data/exam/ex4y.dat'), osp.LogisticRegression(), .92),
+    (osd.ExamDataSet('data/exam/ex4x.dat', 'data/exam/ex4y.dat'), osp.LogisticRegression(), .8),
     (osd.TitanicDataSet('data/titanic/titanic.csv'), osp.LogisticRegression(), .68),
-    (osd.TitanicDataSet('data/titanic/titanic.csv'), osp.LogisticRidgeRegression(), .73),
+    (osd.TitanicDataSet('data/titanic/titanic.csv'), osp.LogisticRidgeRegression(), .7),
+    (osd.TitanicDataSet('data/titanic/titanic.csv'), osp.SupportVectorMachine(tol=1e-2, c=.1, kernel='lin'), .66),
+    (osd.ExamDataSet('data/exam/ex4x.dat', 'data/exam/ex4y.dat'), osp.SupportVectorMachine(), .54),
     (osd.MushroomDataSet('data/mushroom/mushroom.csv'), osp.BoostedTreesBinaryClassification(number_of_models=5), 1.)
 ])
 def test_binary_classification_f1_score(data_set, model, min_f1_score):
@@ -82,13 +86,13 @@ def test_binary_classification_f1_score(data_set, model, min_f1_score):
 
 
 @pytest.mark.parametrize('data_set,model,sk_model,max_error_compared_to_sk,min_abs_error_diff', [
-    (osd.BostonDataSet('data/boston/boston.csv'), osp.LinearRegression(), sklm.LinearRegression(), .8, .1),
-    (osd.BostonDataSet('data/boston/boston.csv'), osp.LinearRidgeRegression(), sklm.Ridge(), .8, .1),
-    (osd.BostonDataSet('data/boston/boston.csv'), osp.LinearLassoRegression(), sklm.Lasso(), .9, .1),
+    (osd.BostonDataSet('data/boston/boston.csv'), osp.LinearRegression(), skl.LinearRegression(), .8, .1),
+    (osd.BostonDataSet('data/boston/boston.csv'), osp.LinearRidgeRegression(), skl.Ridge(), .8, .1),
+    (osd.BostonDataSet('data/boston/boston.csv'), osp.LinearLassoRegression(), skl.Lasso(), 1., .1),
     (osd.BostonDataSet('data/boston/boston.csv'), osp.KNearestNeighborsRegression(),
      sknn.KNeighborsRegressor(n_neighbors=7, weights='distance'), 1.1, .1),
     (osd.BostonDataSet('data/boston/boston.csv'), osp.DecisionTreeRegression(),
-     skt.DecisionTreeRegressor(), .95, .1),
+     skt.DecisionTreeRegressor(), 1.1, .1),
     (osd.BostonDataSet('data/boston/boston.csv'), osp.BaggedTreesRegression(number_of_models=10),
      ske.BaggingRegressor(n_estimators=10), 1.1, .1),
     (osd.BostonDataSet('data/boston/boston.csv'), osp.RandomForestRegression(number_of_models=10),
@@ -117,7 +121,7 @@ def test_regression_error_compared_to_sklearn(data_set, model, sk_model, max_err
     (osd.IrisDataSet('data/iris/iris.csv'), osp.QuadraticDiscriminantAnalysis(), skd.QuadraticDiscriminantAnalysis(),
      1.2, .1),
     (osd.ExamDataSet('data/exam/ex4x.dat', 'data/exam/ex4y.dat'), osp.QuadraticDiscriminantAnalysis(),
-     skd.QuadraticDiscriminantAnalysis(), 1.2, .05),
+     skd.QuadraticDiscriminantAnalysis(), 1.1, .05),
     (osd.IrisDataSet('data/iris/iris.csv'), osp.KNearestNeighborsClassification(),
      sknn.KNeighborsClassifier(n_neighbors=7, weights='distance'), 1.2, .05),
     (osd.ExamDataSet('data/exam/ex4x.dat', 'data/exam/ex4y.dat'),
@@ -146,9 +150,13 @@ def test_classification_accuracy_compared_to_sklearn(data_set, model, sk_model, 
 
 @pytest.mark.parametrize('data_set,model,sk_model,min_f1_score_compared_to_sk,min_abs_f1_score_diff', [
     (osd.TitanicDataSet('data/titanic/titanic.csv'), osp.LogisticRegression(),
-     sklm.LogisticRegression(solver='liblinear'), 1.2, .05),
+     skl.LogisticRegression(solver='liblinear'), 1.2, .05),
+    (osd.TitanicDataSet('data/titanic/titanic.csv'), osp.SupportVectorMachine(tol=1e-2, c=.1, kernel='lin'),
+     sks.SVC(tol=1e-2, C=.1, kernel='linear'), 1.2, .05),
+    (osd.ExamDataSet('data/exam/ex4x.dat', 'data/exam/ex4y.dat'), osp.SupportVectorMachine(),
+     sks.SVC(tol=1e-3, gamma=.1, C=1., kernel='rbf'), 1.2, .05),
     (osd.TitanicDataSet('data/titanic/titanic.csv'), osp.BoostedTreesBinaryClassification(number_of_models=10),
-     ske.GradientBoostingClassifier(n_estimators=10), 1.2, .05)
+     ske.GradientBoostingClassifier(n_estimators=10), 1.1, .05)
 ])
 def test_binary_classification_f1_score_compared_to_sklearn(data_set, model, sk_model, min_f1_score_compared_to_sk,
                                                             min_abs_f1_score_diff):

@@ -128,7 +128,7 @@ class BinaryClassificationModel(PredictiveModel):
         # F1 score.
         precision = self.evaluate_precision(predictions_sr, labels_sr)
         recall = self.evaluate_recall(predictions_sr, labels_sr)
-        return 2 * precision * recall / (precision + recall)
+        return (2 * precision * recall + self.epsilon) / (precision + recall + self.epsilon)
 
     def fuzzy_predict(self, observations_df):
         """
@@ -169,6 +169,8 @@ class BinaryClassificationModel(PredictiveModel):
         self._validate_labels(predictions_sr)
         self._validate_labels(labels_sr)
         n_pos_predictions = predictions_sr.sum()
+        if n_pos_predictions == 0:
+            return 1.
         n_true_pos_predictions = labels_sr[predictions_sr == 1].sum()
         return float(n_true_pos_predictions) / n_pos_predictions
 
@@ -193,6 +195,8 @@ class BinaryClassificationModel(PredictiveModel):
         self._validate_labels(predictions_sr)
         self._validate_labels(labels_sr)
         n_pos_labels = labels_sr.sum()
+        if n_pos_labels == 0:
+            return 1.
         n_true_pos_predictions = predictions_sr[labels_sr == 1].sum()
         return float(n_true_pos_predictions) / n_pos_labels
 
@@ -1045,9 +1049,211 @@ class DecisionTreeRegression(DecisionTree, RegressionModel):
 
 class SupportVectorMachine(BinaryClassificationModel):
     """
-    A support vector machine binary classifier model.
+    A support vector machine binary classifier model using sequential minimal optimization.
+
+    http://cs229.stanford.edu/notes/cs229-notes3.pdf
+    https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-98-14.pdf
     """
-    pass
+    def __init__(self, tol=1e-3, c=1., kernel='rbf', gamma=.5, degree=2, poly_coefficient=1.):
+        super(SupportVectorMachine, self).__init__()
+        if tol < 0:
+            raise ValueError
+        if c < 0:
+            raise ValueError
+        if kernel == 'lin':
+            self._kernel_function = self._linear_kernel
+        elif kernel == 'poly':
+            if degree is None or degree < 1 or poly_coefficient is None:
+                raise ValueError
+            self._kernel_function = self._polynomial_kernel
+        elif kernel == 'rbf':
+            if gamma is None or gamma <= 0:
+                raise ValueError
+            self._kernel_function = self._gaussian_kernel
+        else:
+            raise ValueError
+        self.tol = tol
+        self.c = c
+        self.degree = degree
+        self.poly_coefficient = poly_coefficient
+        self.gamma = gamma
+        self._support_vectors = None
+        self._support_vector_labels = None
+        self._support_vector_alphas = None
+        self._intercept = None
+
+    @staticmethod
+    def _linear_kernel(x1, x2):
+        return np.dot(x1, x2.T)
+
+    def _polynomial_kernel(self, x1, x2):
+        return np.power(self.poly_coefficient + np.dot(x1, x2.T), self.degree)
+
+    def _gaussian_kernel(self, x1, x2):
+        return np.exp(-self.gamma * np.sqrt(np.square(x1 - x2).sum(axis=1)))
+
+    def _raw_predict(self, new_observations, observations, labels, alphas, intercept):
+        predictions = np.full(len(new_observations), float(intercept))
+        for i, x in enumerate(new_observations):
+            predictions[i] += np.sum(self._kernel_function(observations, x) * alphas * labels)
+        return predictions
+
+    def _update_error_cache(self, observations, labels, alphas, errors, intercept):
+        for i in range(len(observations)):
+            observation_i = observations[i].reshape((1, observations.shape[1]))
+            label_i = labels[i]
+            errors[i] = self._raw_predict(observation_i, observations, labels, alphas, intercept) - label_i
+
+    def _set_parameters(self, observations, labels, alphas, intercept):
+        # Only save the non-zero terms i.e. the support vectors (and the ones that fall on the wrong side of the
+        # margin) and their labels and Lagrangian multipliers.
+        indices = alphas > .0
+        self._support_vectors = observations[indices]
+        self._support_vector_labels = labels[indices]
+        self._support_vector_alphas = alphas[indices]
+        n_support_vectors = len(self._support_vectors)
+        self._intercept = float(intercept) * len(observations) / n_support_vectors if n_support_vectors > 0 else 0.
+
+    def _optimize_ij(self, i, j, observations, labels, alphas, errors, intercept):
+        observation_i = observations[i].reshape((1, observations.shape[1]))
+        observation_j = observations[j].reshape((1, observations.shape[1]))
+        label_i = labels[i]
+        label_j = labels[j]
+        alpha_i = alphas[i]
+        alpha_j = alphas[j]
+        # Compute the constraints on alpha_j (that ensure that both 0 <= alpha_i <= c and 0 <= alpha_j <= c).
+        if label_i == label_j:
+            hi_bound = alpha_i + alpha_j
+            low_bound = hi_bound - self.c
+        else:
+            low_bound = alpha_j - alpha_i
+            hi_bound = low_bound + self.c
+        hi_bound = min(self.c, hi_bound)
+        low_bound = max(.0, low_bound)
+        # If the boundaries are equal, skip.
+        if hi_bound == low_bound:
+            return False
+        k_ii = self._kernel_function(observation_i, observation_i)
+        k_jj = self._kernel_function(observation_j, observation_j)
+        k_ij = self._kernel_function(observation_i, observation_j)
+        eta = float(k_ii + k_jj - 2 * k_ij)
+        # If the denominator would be 0, skip.
+        if eta == 0:
+            return False
+        error_i = errors[i]
+        error_j = errors[j]
+        alpha_j_new_unclipped = alpha_j + label_j * (error_i - error_j) / eta
+        alpha_j_new = max(low_bound, min(hi_bound, alpha_j_new_unclipped))
+        alpha_j_delta = alpha_j_new - alpha_j
+        # If there is no significant change in the value of alpha_j (and hence in that of alpha_i), skip.
+        if abs(alpha_j_delta) < self.tol:
+            return False
+        alpha_i_delta = label_i * label_j * -alpha_j_delta
+        alpha_i_new = alpha_i + alpha_i_delta
+        alphas[i] = alpha_i_new
+        alphas[j] = alpha_j_new
+        # Calculate the intercept term.
+        intercept_i = float(intercept) - error_i - alpha_i_delta * label_i * k_ii - alpha_j_delta * label_j * k_ij
+        intercept_j = float(intercept) - error_j - alpha_i_delta * label_i * k_ij - alpha_j_delta * label_j * k_jj
+        if 0 < alpha_i_new < self.c:
+            intercept[0] = intercept_i
+        elif 0 < alpha_j_new < self.c:
+            intercept[0] = intercept_j
+        else:
+            intercept[0] = (intercept_i + intercept_j) / 2
+        # Update the list of errors.
+        self._update_error_cache(observations, labels, alphas, errors, intercept)
+        return True
+
+    def _optimize_i(self, i, observations, labels, alphas, errors, intercept):
+        # Select the first Lagrangian to optimize.
+        label_i = labels[i]
+        alpha_i = alphas[i]
+        error_i = errors[i]
+        kkt_satisfied = True
+        if label_i * error_i < -self.tol and alpha_i < self.c:
+            kkt_satisfied = False
+        elif label_i * error_i > self.tol and alpha_i > 0:
+            kkt_satisfied = False
+        # If the KKT conditions are satisfied, skip this observation.
+        if kkt_satisfied:
+            return False
+        # Use a hierarchy of heuristics to select the second Lagrangian to optimize.
+        all_indices = range(len(observations))
+        unbounded_indices = [j for j in all_indices if i != j and 0 < alphas[j] < self.c]
+        if len(unbounded_indices) > 0:
+            # If there are any remaining unbounded Lagrangians, pick the one that maximizes the step size |E_i - E_j|.
+            # The step size is approximated by its numerator as the computation of the denominator involves the use of
+            # the kernel function (3 invocations) and is hence expensive.
+            sorted_unbounded_errors_indices = np.argsort(errors[unbounded_indices])
+            # If E_i is positive, assume that the best bet of maximizing the step size is finding the smallest E_j
+            # (which is obviously a heuristic and not necessarily correct).
+            j = sorted_unbounded_errors_indices[0] if error_i > 0 else sorted_unbounded_errors_indices[-1]
+            if self._optimize_ij(i, j, observations, labels, alphas, errors, intercept):
+                return True
+            # If the first heuristic did not work, try all the other unbounded Lagrangians.
+            # Start the iteration at a random index to avoid biasing the algorithm towards Lagrangians at the beginning
+            # of the list.
+            first_j = j
+            start_index = np.random.randint(0, len(unbounded_indices))
+            for j in unbounded_indices[start_index:] + unbounded_indices[:start_index]:
+                if first_j == j:
+                    continue
+                if self._optimize_ij(i, j, observations, labels, alphas, errors, intercept):
+                    return True
+        bounded_indices = [j for j in all_indices if i != j and alphas[j] == .0]
+        if len(bounded_indices) > 0:
+            # If there are no unbounded Lagrangians or the first two heuristics did not work, try the bounded ones.
+            # Start the iteration at a random location.
+            start_index = np.random.randint(0, len(bounded_indices))
+            for j in bounded_indices[start_index:] + bounded_indices[:start_index]:
+                if self._optimize_ij(i, j, observations, labels, alphas, errors, intercept):
+                    return True
+        return False
+
+    def _fit(self, observations_df, labels_sr):
+        # Due to the equality constraint sum(a_i * y_i) = 0, minimum two observations are required for optimization.
+        if len(observations_df.index) < 2:
+            raise ValueError
+        observations = observations_df.values
+        # Convert the labels from {0, 1} to {-1, 1}.
+        labels = labels_sr.values * 2. - 1.
+        # Make sure 0 <= alpha_i <= c for every i.
+        # Make sure sum(alpha_i * label_i) = 0.
+        alphas = np.zeros(labels.shape)
+        intercept = np.full(1, .0)
+        errors = -1 * labels
+        examine_all = True
+        n_changed_alphas = 0
+        # Use the SMO algorithm.
+        # Stop if there are no changed Lagrangian multipliers after a pass over the entire data set.
+        while examine_all or n_changed_alphas > 0:
+            n_changed_alphas = 0
+            indices = range(len(observations))
+            if not examine_all:
+                indices = [i for i in list(indices) if 0 < alphas[i] < self.c]
+            for i in indices:
+                # Optimize two Lagrangian multipliers.
+                if self._optimize_i(i, observations, labels, alphas, errors, intercept):
+                    n_changed_alphas += 1
+            # Alternate between single passes over the entire data set and multiple passes over the unbounded subset.
+            # Keep iterating over the unbounded observations until the number of changed Lagrangian multipliers is 0.
+            examine_all = not examine_all and n_changed_alphas == 0
+        self._set_parameters(observations, labels, alphas, intercept)
+
+    def _test(self, observations_df, labels_sr):
+        # Hinge loss.
+        raw_predictions = self._raw_predict(observations_df.values, self._support_vectors, self._support_vector_labels,
+                                            self._support_vector_alphas, self._intercept)
+        labels = labels_sr.values * 2. - 1.
+        return np.sum(np.maximum(1. - labels * raw_predictions, .0))
+
+    def _fuzzy_predict(self, observations_df):
+        raw_predictions = self._raw_predict(observations_df.values, self._support_vectors, self._support_vector_labels,
+                                            self._support_vector_alphas, self._intercept)
+        # Translate the predictions (-inf, inf) to [0, 1].
+        fuzzy_predictions = raw_predictions / (np.abs(raw_predictions).max() * 2 + self.epsilon) + .5
+        return fuzzy_predictions
 
 
 class MultiBinaryClassification(ClassificationModel):

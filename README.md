@@ -61,6 +61,7 @@ It is also possible to combine multiple models using a __meta-model__ to improve
 | QuadraticDiscriminantAnalysis | Yes        | Classification (G)                    | CN                      |
 | KNearestNeighbors             | No         | Classification (NPD), Regression      | CN, BC, OC              |
 | DecisionTree                  | No         | Classification (NPD), Regression      | CN, BC, OC, NC          |
+| SupportVectorMachine          | No         | BinaryClassification (NPD)            | CN, BC, OC              |
 | BaggedTrees                   | No         | Classification (NPD), Regression      | CN, BC, OC, NC          |
 | RandomForest                  | No         | Classification (NPD), Regression      | CN, BC, OC, NC          |
 | BoostedTrees                  | No         | BinaryClassification (PD), Regression | CN, BC, OC, NC          |
