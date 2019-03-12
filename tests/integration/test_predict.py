@@ -61,7 +61,7 @@ def test_regression_model_error(data_set, model, max_error):
     (osd.TitanicDataSet('data/titanic/titanic.csv'), osp.DecisionTreeClassification(), .76),
     (osd.IrisDataSet('data/iris/iris.csv'), osp.MultiBinaryClassification(
         base_binary_classifier=osp.LogisticRegression(iterations=100), number_of_processes=3), .95),
-    (osd.IrisDataSet('data/iris/iris.csv'), osp.BaggedTreesClassification(number_of_models=10), .93),
+    (osd.IrisDataSet('data/iris/iris.csv'), osp.BaggedTreesClassification(number_of_models=10), .91),
     (osd.IrisDataSet('data/iris/iris.csv'), osp.RandomForestClassification(number_of_models=10), .91),
     (osd.IMDBDataSet('data/imdb/ratings.csv'), osp.RandomForestClassification(number_of_models=16), .21)
 ])
