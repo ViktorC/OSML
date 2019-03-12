@@ -5,4 +5,4 @@ python:
 install:
   - pip install -r requirements.txt
 script:
-  - python setup.py test
+  - travis_wait python setup.py test
