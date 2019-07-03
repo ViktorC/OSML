@@ -4,7 +4,7 @@ install_requires = ['numpy', 'pandas']
 
 setup_requires = ['pytest-runner']
 
-test_requires = ['pytest', 'scipy', 'sklearn']
+test_requires = ['pytest', 'coverage', 'scipy', 'sklearn']
 
 setup(
     name='osml',

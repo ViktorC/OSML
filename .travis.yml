@@ -4,5 +4,13 @@ python:
   - "3.6"
 install:
   - pip install -r requirements.txt
+addons:
+  sonarcloud:
+    organization: "viktorc-github"
+    token:
+      secure: ${SONAR_TOKEN}
 script:
-  - travis_wait 90 python setup.py test
+  - python setup.py build install
+  - travis_wait 90 coverage run --source=osml setup.py test
+  - coverage xml -o coverage.xml
+  - sonar-scanner
