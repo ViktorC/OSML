@@ -96,7 +96,7 @@ def test_binary_classification_f1_score(data_set, model, min_f1_score):
     (osd.BostonDataSet('data/boston/boston.csv'), osp.BaggedTreesRegression(number_of_models=10),
      ske.BaggingRegressor(n_estimators=10), 1.1, .1),
     (osd.BostonDataSet('data/boston/boston.csv'), osp.RandomForestRegression(number_of_models=10),
-     ske.RandomForestRegressor(n_estimators=10), 1.2, .1),
+     ske.RandomForestRegressor(n_estimators=10), 1.25, .1),
     (osd.BostonDataSet('data/boston/boston.csv'), osp.BoostedTreesRegression(number_of_models=5),
      ske.GradientBoostingRegressor(n_estimators=5), 1.1, .1)
 ])
