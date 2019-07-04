@@ -2,9 +2,9 @@ from setuptools import setup
 
 install_requires = ['numpy', 'pandas']
 
-setup_requires = ['pytest-runner']
+setup_requires = ['pytest-runner', 'flake8']
 
-test_requires = ['pytest', 'scipy', 'sklearn']
+test_requires = ['pytest', 'coverage', 'scipy', 'sklearn']
 
 setup(
     name='osml',

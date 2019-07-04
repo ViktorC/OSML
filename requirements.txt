@@ -1,5 +1,7 @@
 setuptools
+flake8
 pytest
+coverage
 numpy
 pandas
 scipy

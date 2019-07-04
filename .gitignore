@@ -1,0 +1,16 @@
+# Python
+.eggs/
+*.egg-info/
+.coverage
+.coverage.*
+coverage.xml
+.pytest_cache/
+
+# Editor
+.idea/
+
+# Project
+build/
+
+# OSX
+.DS_Store
