@@ -8,6 +8,12 @@ class DataSet:
     """
     An abstract class representing a data set.
     """
+    def __init__(self, training_observations_df, test_observations_df, training_labels_sr, test_labels_sr):
+        self.training_observations_df = training_observations_df
+        self.test_observations_df = test_observations_df
+        self.training_labels_sr = training_labels_sr
+        self.test_labels_sr = test_labels_sr
+
     def get_training_observations(self) -> pd.DataFrame:
         """
         Returns a data frame of the training observations.
@@ -15,7 +21,7 @@ class DataSet:
         Returns:
             A pandas data frame of training data instances without their labels.
         """
-        pass
+        return self.training_observations_df
 
     def get_test_observations(self) -> pd.DataFrame:
         """
@@ -24,7 +30,7 @@ class DataSet:
         Returns:
             A pandas data frame of test data instances without their labels.
         """
-        pass
+        return self.test_observations_df
 
     def get_training_labels(self) -> pd.Series:
         """
@@ -33,7 +39,7 @@ class DataSet:
         Returns:
             A series of values where each element is the predicted label of the corresponding training observation.
         """
-        pass
+        return self.training_labels_sr
 
     def get_test_labels(self) -> pd.Series:
         """
@@ -42,7 +48,7 @@ class DataSet:
         Returns:
             A series of values where each element is the predicted label of the corresponding test observation.
         """
-        pass
+        return self.test_labels_sr
 
 
 def shuffle(observations_df, labels_sr):
@@ -152,20 +158,8 @@ class BostonDataSet(DataSet):
         complete_df['chas'] = complete_df['chas'].astype(np.byte)
         labels_sr = pd.Series(complete_df[complete_df.columns[label_column_idx]])
         observations_df = complete_df.drop(complete_df.columns[label_column_idx], axis=1)
-        self.training_observations_df, self.test_observations_df, self.training_labels_sr, self.test_labels_sr =\
-            split_train_test(observations_df, labels_sr, test_share, shuffle_data, reset_indices)
-
-    def get_training_observations(self):
-        return self.training_observations_df
-
-    def get_test_observations(self):
-        return self.test_observations_df
-
-    def get_training_labels(self):
-        return self.training_labels_sr
-
-    def get_test_labels(self):
-        return self.test_labels_sr
+        super(BostonDataSet, self).__init__(
+            *split_train_test(observations_df, labels_sr, test_share, shuffle_data, reset_indices))
 
 
 class ExamDataSet(DataSet):
@@ -176,20 +170,8 @@ class ExamDataSet(DataSet):
     def __init__(self, obs_path, label_path, shuffle_data=True, reset_indices=True, test_share=.3):
         observations_df = pd.DataFrame(np.loadtxt(obs_path))
         labels_sr = pd.Series(np.loadtxt(label_path), dtype=np.byte)
-        self.training_observations_df, self.test_observations_df, self.training_labels_sr, self.test_labels_sr = \
-            split_train_test(observations_df, labels_sr, test_share, shuffle_data, reset_indices)
-
-    def get_training_observations(self):
-        return self.training_observations_df
-
-    def get_test_observations(self):
-        return self.test_observations_df
-
-    def get_training_labels(self):
-        return self.training_labels_sr
-
-    def get_test_labels(self):
-        return self.test_labels_sr
+        super(ExamDataSet, self).__init__(
+            *split_train_test(observations_df, labels_sr, test_share, shuffle_data, reset_indices))
 
 
 class IrisDataSet(DataSet):
@@ -204,20 +186,8 @@ class IrisDataSet(DataSet):
         complete_df['species'] = complete_df['species'].astype(np.int_)
         labels_sr = pd.Series(complete_df[complete_df.columns[label_column_idx]])
         observations_df = complete_df.drop(complete_df.columns[label_column_idx], axis=1)
-        self.training_observations_df, self.test_observations_df, self.training_labels_sr, self.test_labels_sr = \
-            split_train_test(observations_df, labels_sr, test_share, shuffle_data, reset_indices)
-
-    def get_training_observations(self):
-        return self.training_observations_df
-
-    def get_test_observations(self):
-        return self.test_observations_df
-
-    def get_training_labels(self):
-        return self.training_labels_sr
-
-    def get_test_labels(self):
-        return self.test_labels_sr
+        super(IrisDataSet, self).__init__(
+            *split_train_test(observations_df, labels_sr, test_share, shuffle_data, reset_indices))
 
 
 class TitanicDataSet(DataSet):
@@ -236,20 +206,8 @@ class TitanicDataSet(DataSet):
         complete_df['Parents/Children Aboard'] = complete_df['Parents/Children Aboard'].astype(np.float_)
         labels_sr = pd.Series(complete_df[complete_df.columns[label_column_idx]])
         observations_df = complete_df.drop(complete_df.columns[label_column_idx], axis=1)
-        self.training_observations_df, self.test_observations_df, self.training_labels_sr, self.test_labels_sr = \
-            split_train_test(observations_df, labels_sr, test_share, shuffle_data, reset_indices)
-
-    def get_training_observations(self):
-        return self.training_observations_df
-
-    def get_test_observations(self):
-        return self.test_observations_df
-
-    def get_training_labels(self):
-        return self.training_labels_sr
-
-    def get_test_labels(self):
-        return self.test_labels_sr
+        super(TitanicDataSet, self).__init__(
+            *split_train_test(observations_df, labels_sr, test_share, shuffle_data, reset_indices))
 
 
 class MushroomDataSet(DataSet):
@@ -268,20 +226,8 @@ class MushroomDataSet(DataSet):
         complete_df = complete_df.drop('stalk_shape_e', axis=1)
         labels_sr = pd.Series(complete_df[complete_df.columns[label_column_idx]])
         observations_df = complete_df.drop(complete_df.columns[label_column_idx], axis=1)
-        self.training_observations_df, self.test_observations_df, self.training_labels_sr, self.test_labels_sr = \
-            split_train_test(observations_df, labels_sr, test_share, shuffle_data, reset_indices)
-
-    def get_training_observations(self):
-        return self.training_observations_df
-
-    def get_test_observations(self):
-        return self.test_observations_df
-
-    def get_training_labels(self):
-        return self.training_labels_sr
-
-    def get_test_labels(self):
-        return self.test_labels_sr
+        super(MushroomDataSet, self).__init__(
+            *split_train_test(observations_df, labels_sr, test_share, shuffle_data, reset_indices))
 
 
 class IMDBDataSet(DataSet):
@@ -319,13 +265,15 @@ class IMDBDataSet(DataSet):
         labels_sr = observations_df.pop(observations_df.columns[label_column_idx + 1])
         if binary:
             labels_sr = labels_sr.apply(lambda e: 1 if e >= positive_rating_cutoff else 0)
-        self.training_observations_df, self.test_observations_df, self.training_labels_sr, self.test_labels_sr = \
+        training_observations_df, test_observations_df, training_labels_sr, test_labels_sr = \
             split_train_test(observations_df, labels_sr, test_share, shuffle_data, reset_indices)
         if oversample_training_data:
-            self.training_observations_df, self.training_labels_sr = oversample(self.training_observations_df,
-                                                                                self.training_labels_sr)
-        self.training_observation_ids_sr = self.training_observations_df.pop('Const')
-        self.test_observation_ids_sr = self.test_observations_df.pop('Const')
+            training_observations_df, training_labels_sr = oversample(training_observations_df,
+                                                                      training_labels_sr)
+        self.training_observation_ids_sr = training_observations_df.pop('Const')
+        self.test_observation_ids_sr = test_observations_df.pop('Const')
+        super(IMDBDataSet, self).__init__(training_observations_df, test_observations_df, training_labels_sr,
+                                          test_labels_sr)
 
     @staticmethod
     def calculate_days_since_release(release_date):
@@ -387,15 +335,3 @@ class IMDBDataSet(DataSet):
             A pandas series of IMDb IDs.
         """
         return self.test_observation_ids_sr
-
-    def get_training_observations(self):
-        return self.training_observations_df
-
-    def get_test_observations(self):
-        return self.test_observations_df
-
-    def get_training_labels(self):
-        return self.training_labels_sr
-
-    def get_test_labels(self):
-        return self.test_labels_sr
