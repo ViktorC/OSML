@@ -11,6 +11,8 @@ addons:
       secure: ${SONAR_TOKEN}
 script:
   - python setup.py build install
+  - python setup.py build setup
+  - flake8 osml
   - travis_wait 90 coverage run --source=osml setup.py test
   - coverage xml -o coverage.xml
   - sonar-scanner
